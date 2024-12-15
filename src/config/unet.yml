@@ -14,8 +14,9 @@ TRAIN:
     KWARGS:
       lr: 0.001
   CRITERION:
-    class_path: 'torch.nn.MSELoss'
-    KWARGS: {}
+    class_path: 'src.loss.WeightedDiceLoss'
+    KWARGS:
+      alpha: 2.0
   KWARGS:
     epochs: 1
     metrics: []
