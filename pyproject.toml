@@ -19,6 +19,7 @@ strict = true
 [[tool.mypy.overrides]]
 module = [
     "yacs.*",
-    "torchvision.*"
+    "torchvision.*",
+    "scipy.*"
 ]
 ignore_missing_imports = true

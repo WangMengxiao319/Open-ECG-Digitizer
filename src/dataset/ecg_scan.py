@@ -50,7 +50,15 @@ class ECGScanDataset(torch.utils.data.Dataset[Any]):
         loaded_files = []
         for file in tqdm(files, desc="Loading ECG grid masks"):
             loaded_files.append(torch.tensor(np.load(file)).float())
+        loaded_files = self._mask_to_one_hot(loaded_files)
         return loaded_files
+
+    def _mask_to_one_hot(self, masks: List[torch.Tensor]) -> List[torch.Tensor]:
+        num_classes = max([int(torch.max(masks[i]).item()) for i in range(len(masks))]) + 1
+        one_hot_mask = []
+        for i in range(len(masks)):
+            one_hot_mask.append(torch.nn.functional.one_hot(masks[i].long(), num_classes).permute(2, 0, 1))
+        return one_hot_mask
 
     def __len__(self) -> int:
         return len(self.ecg_scan_files)
