@@ -206,6 +206,6 @@ def main(config: CN) -> Optional[ExperimentAnalysis]:
 
 
 if __name__ == "__main__":
-    cfg = get_cfg("test/test_data/config/unet.yml")
+    cfg = get_cfg("src/config/unet.yml")
     main(cfg)
     print(cfg)
