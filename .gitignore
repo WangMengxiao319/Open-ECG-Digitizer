@@ -3,3 +3,4 @@ model_weights
 __pycache__
 venv
 .vscode
+src/scripts/visualized_transforms
