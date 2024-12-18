@@ -16,7 +16,7 @@ TRAIN:
     KWARGS:
       alpha: 2.0
   KWARGS:
-    epochs: 1
+    epochs: 10
     metrics: []
     device: 'cuda:0'
     metrics:
@@ -38,13 +38,17 @@ HYPERPARAMETER_SEARCH:
       KWARGS:
         dims:
           SAMPLE_TYPE: 'ray.tune.grid_search'
-          VALUES: [[8, 8, 16, 64]]
+          VALUES: [[4, 8, 16]]
+        depths:
+          SAMPLE_TYPE: 'ray.tune.grid_search'
+          VALUES: [[2, 2, 2]]
 
 DATALOADER:
   class_path: 'torch.utils.data.DataLoader'
   KWARGS:
     batch_size: 1
     shuffle: False
+    num_workers: 2
 
 DATASET:
   class_path: 'src.dataset.ecg_scan.ECGScanDataset'
