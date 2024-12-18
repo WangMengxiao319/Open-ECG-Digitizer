@@ -7,8 +7,6 @@ MODEL:
     dims: [1, 2]
 
 TRAIN:
-  METRICS:
-    -
   OPTIMIZER:
     class_path: 'torch.optim.Adam'
     KWARGS:
@@ -20,6 +18,10 @@ TRAIN:
     epochs: 1
     metrics: []
     device: 'cpu'
+    metrics:
+      -
+        class_path: 'src.loss.loss.MulticlassBinaryCrossEntropyLoss'
+        fit: false
 
 HYPERPARAMETER_SEARCH:
   SCHEDULER:

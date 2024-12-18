@@ -1,5 +1,6 @@
 from torch import nn
 from torch.nn import functional as F
+from typing import List
 import torch
 
 
@@ -56,6 +57,38 @@ class WeightedCrossEntropyLoss(nn.Module):
         loss = w * loss
 
         return loss.mean()
+
+
+class MulticlassBinaryCrossEntropyLoss(nn.Module):
+    def __init__(self, signal_class: int = -1) -> None:
+        super(MulticlassBinaryCrossEntropyLoss, self).__init__()
+        self.signal_class: int = signal_class
+
+    def forward(
+        self, pred: torch.Tensor | List[torch.Tensor], target_one_hot: torch.Tensor | List[torch.Tensor]
+    ) -> torch.Tensor:
+        if type(pred) is not type(target_one_hot):
+            raise ValueError("Pred and target_one_hot must be of the same type.")
+
+        if isinstance(pred, torch.Tensor) and isinstance(target_one_hot, torch.Tensor):
+            loss = self.compute_loss(pred, target_one_hot, self.signal_class)
+        else:
+            loss = 0.0  # type: ignore
+            for i in range(len(pred)):
+                loss += self.compute_loss(pred[i], target_one_hot[i], self.signal_class)
+            loss /= len(pred)
+        return loss
+
+    @staticmethod
+    def compute_loss(pred: torch.Tensor, target_one_hot: torch.Tensor, signal_class: int) -> torch.Tensor:
+        prob: torch.Tensor = F.softmax(pred, dim=1)
+        signal_prob: torch.Tensor = prob[:, signal_class, :, :]
+        loss: torch.Tensor = nn.BCELoss()(signal_prob, target_one_hot[:, signal_class, :, :].float())
+        return loss
+
+    @property
+    def __name__(self) -> str:
+        return "multiclass_binary_cross_entropy_loss"
 
 
 class FourierLoss(nn.Module):
