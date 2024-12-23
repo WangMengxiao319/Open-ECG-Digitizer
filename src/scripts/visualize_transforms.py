@@ -3,7 +3,7 @@ import torch
 import torch.nn as nn
 import matplotlib.pyplot as plt
 from numpy import load
-from src.transform.vision import ScanTransform
+from src.transform.vision import ComposedTransform
 
 
 class Visualizer:
@@ -62,7 +62,21 @@ class Visualizer:
         Returns:
             tuple[torch.Tensor, torch.Tensor]: Transformed image and mask tensors.
         """
-        transform = ScanTransform()
+        transform_config = [
+            {"class_path": "src.transform.vision.GreyscaleTransform", "KWARGS": {}},
+            {"class_path": "src.transform.vision.RandomShiftTextTransform", "KWARGS": {}},
+            {"class_path": "src.transform.vision.RandomTextOverlayTransform", "KWARGS": {}},
+            {"class_path": "src.transform.vision.RandomFlipTransform", "KWARGS": {}},
+            {"class_path": "src.transform.vision.RandomBlurOrSharpnessTransform", "KWARGS": {}},
+            {"class_path": "src.transform.vision.RandomGammaTransform", "KWARGS": {}},
+            {"class_path": "src.transform.vision.RandomResizedCropTransform", "KWARGS": {}},
+            {"class_path": "src.transform.vision.RandomRotation", "KWARGS": {}},
+            {"class_path": "src.transform.vision.RandomJPEGCompression", "KWARGS": {}},
+            {"class_path": "src.transform.vision.RandomGradientOverlay", "KWARGS": {}},
+            {"class_path": "src.transform.vision.RefineMask", "KWARGS": {}},
+        ]
+
+        transform = ComposedTransform(transform_config)
         return transform(image, mask)  # type: ignore
 
     def _save_plot(self, image: torch.Tensor, mask: torch.Tensor, filename: str, greyscale: bool) -> None:

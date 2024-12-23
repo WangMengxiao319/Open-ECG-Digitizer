@@ -14,15 +14,25 @@ def get_data_loaders(
 
     dataset_kwargs = dataset_config["KWARGS"]
 
-    train_dataloader = DataLoader(
-        dataset_model(**(dataset_kwargs | dataset_config["TRAIN"]["KWARGS"])), **dataloader_config
-    )
-    val_dataloader = DataLoader(
-        dataset_model(**(dataset_kwargs | dataset_config["VAL"]["KWARGS"])), **dataloader_config
-    )
-    test_dataloader = DataLoader(
-        dataset_model(**(dataset_kwargs | dataset_config["TEST"]["KWARGS"])), **dataloader_config
-    )
+    def get_transform(config: Dict[Any, Any]) -> Any:
+        if "TRANSFORM" not in config:
+            return None
+        transform_config = config["TRANSFORM"]
+        transform_class = import_class_from_path(transform_config["class_path"])
+        return transform_class(**transform_config.get("KWARGS", {}))
+
+    transform_train = get_transform(dataset_config.get("TRAIN", {}))
+    transform_val = get_transform(dataset_config.get("VAL", {}))
+    transform_test = get_transform(dataset_config.get("TEST", {}))
+
+    train_dataset = dataset_model(**{**dataset_kwargs, **dataset_config["TRAIN"]["KWARGS"]}, transform=transform_train)
+    val_dataset = dataset_model(**{**dataset_kwargs, **dataset_config["VAL"]["KWARGS"]}, transform=transform_val)
+    test_dataset = dataset_model(**{**dataset_kwargs, **dataset_config["TEST"]["KWARGS"]}, transform=transform_test)
+
+    train_dataloader = DataLoader(train_dataset, **dataloader_config)
+    val_dataloader = DataLoader(val_dataset, **dataloader_config)
+    test_dataloader = DataLoader(test_dataset, **dataloader_config)
+
     return train_dataloader, val_dataloader, test_dataloader
 
 

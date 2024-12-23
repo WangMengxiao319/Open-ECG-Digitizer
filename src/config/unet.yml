@@ -58,15 +58,45 @@ DATALOADER:
 DATASET:
   class_path: 'src.dataset.ecg_scan.ECGScanDataset'
   KWARGS: {}
+
+  TRANSFORM_COMMON: &TRANSFORM_COMMON
+    class_path: 'src.transform.vision.ComposedTransform'
+    KWARGS:
+      transform_config:
+        - class_path: 'src.transform.vision.GreyscaleTransform'
+          KWARGS: {}
+        - class_path: 'src.transform.vision.RandomShiftTextTransform'
+          KWARGS: {}
+        - class_path: 'src.transform.vision.RandomTextOverlayTransform'
+          KWARGS: {}
+        - class_path: 'src.transform.vision.RandomFlipTransform'
+          KWARGS: {}
+        - class_path: 'src.transform.vision.RandomBlurOrSharpnessTransform'
+          KWARGS: {}
+        - class_path: 'src.transform.vision.RandomGammaTransform'
+          KWARGS: {}
+        - class_path: 'src.transform.vision.RandomResizedCropTransform'
+          KWARGS: {}
+        - class_path: 'src.transform.vision.RandomRotation'
+          KWARGS: {}
+        - class_path: 'src.transform.vision.RandomJPEGCompression'
+          KWARGS: {}
+        - class_path: 'src.transform.vision.RandomGradientOverlay'
+          KWARGS: {}
+        - class_path: 'src.transform.vision.RefineMask'
+          KWARGS: {}
   TRAIN:
     KWARGS:
       ecg_scan_path: '../../data/ecg/ecg_scans/train'
       ecg_mask_path: '../../data/ecg/ecg_masks/train'
+    TRANSFORM: *TRANSFORM_COMMON
   VAL:
     KWARGS:
       ecg_scan_path: '../../data/ecg/ecg_scans/val'
       ecg_mask_path: '../../data/ecg/ecg_masks/val'
+      load_n: 1
   TEST:
     KWARGS:
       ecg_scan_path: '../../data/ecg/ecg_scans/test'
       ecg_mask_path: '../../data/ecg/ecg_masks/test'
+      load_n: 1

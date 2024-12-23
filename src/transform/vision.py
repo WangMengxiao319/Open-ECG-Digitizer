@@ -1,6 +1,7 @@
 import torch
 from torch import nn
-from typing import Tuple, Union
+from typing import Tuple, Union, Dict, Any, List
+from src.utils import import_class_from_path
 import torchvision.transforms.functional as F
 import torchvision.transforms as T
 import torchvision.transforms.v2 as T2
@@ -49,7 +50,7 @@ class RandomShiftTextTransform(nn.Module):
 class RandomTextOverlayTransform(nn.Module):
     """Reads a set of text images and overlays them on the input image."""
 
-    def __init__(self, text_path: str, opacity_range: Tuple[float, float] = (0.1, 0.8)):
+    def __init__(self, text_path: Union[str | None] = None, opacity_range: Tuple[float, float] = (0.1, 0.8)):
         super().__init__()
         self.texts = [
             torch.tensor(plt.imread(os.path.join(text_path, f))).float().permute(2, 0, 1)[:3]
@@ -243,35 +244,30 @@ class RefineMask(nn.Module):
 class ComposedTransform(nn.Module):
     """Applies transformations in sequence."""
 
-    def __init__(self, transforms: list[nn.Module]):
+    def __init__(self, transform_config: List[Dict[Any, Any]]):
+        """
+        Initializes a composed transform based on the given configuration.
+
+        Args:
+            transforms (dict): Configuration containing class path and transforms.
+        """
         super(ComposedTransform, self).__init__()
+        transforms = []
+        for transform_def in transform_config:
+            transform_class = import_class_from_path(transform_def["class_path"])
+            transform = transform_class(**transform_def.get("KWARGS", {}))
+            transforms.append(transform)
         self.transforms = transforms
 
     def forward(self, img: torch.Tensor, mask: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         for transform in self.transforms:
-            img, mask = transform(img, mask)
+            img, mask = transform.forward(img, mask)
         return img, mask
 
 
-class ScanTransform(nn.Module):
-    """Default composed transformation for ECG scans."""
-
-    def __init__(self) -> None:
-        super(ScanTransform, self).__init__()
-        self.transform: ComposedTransform = ComposedTransform(
-            [
-                RandomShiftTextTransform(),
-                RandomTextOverlayTransform(os.path.join(os.path.dirname(os.path.abspath(__file__)), "overlay_images")),
-                RandomFlipTransform(),
-                RandomBlurOrSharpnessTransform(),
-                RandomGammaTransform(),
-                RandomResizedCropTransform(),
-                RandomRotation(),
-                RandomJPEGCompression(),
-                RandomGradientOverlay(),
-                RefineMask(),
-            ]
-        )
+class GreyscaleTransform(nn.Module):
+    """Converts the image to greyscale."""
 
     def forward(self, img: torch.Tensor, mask: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
-        return self.transform(img, mask)  # type: ignore
+        img = F.rgb_to_grayscale(img, num_output_channels=3)
+        return img, mask

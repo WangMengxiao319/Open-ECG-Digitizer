@@ -1,5 +1,5 @@
 from tqdm import tqdm
-from typing import Any, List, Tuple
+from typing import Any, List, Tuple, Union
 import matplotlib.pyplot as plt
 import numpy as np
 import os
@@ -7,9 +7,12 @@ import torch
 
 
 class ECGScanDataset(torch.utils.data.Dataset[Any]):
-    def __init__(self, ecg_scan_path: str, ecg_mask_path: str):
+    def __init__(
+        self, ecg_scan_path: str, ecg_mask_path: str, transform: Any = None, load_n: Union[None, int] = None
+    ) -> None:
         self.ecg_scan_path = ecg_scan_path
         self.ecg_mask_path = ecg_mask_path
+        self.transform = transform
 
         # Prepend current software directory if path is not absolute.
         if not os.path.isabs(self.ecg_scan_path):
@@ -18,6 +21,9 @@ class ECGScanDataset(torch.utils.data.Dataset[Any]):
             self.ecg_mask_path = os.path.join(os.path.dirname(__file__), self.ecg_mask_path)
 
         self.ecg_scan_files, self.ecg_mask_files = self._find_ecg_files()
+        if load_n:
+            self.ecg_scan_files = self.ecg_scan_files[:load_n]
+            self.ecg_mask_files = self.ecg_mask_files[:load_n]
 
         self.ecg_scans = self._load_scans(self.ecg_scan_files)
         self.ecg_masks = self._load_masks(self.ecg_mask_files)
@@ -57,11 +63,14 @@ class ECGScanDataset(torch.utils.data.Dataset[Any]):
         num_classes = max([int(torch.max(masks[i]).item()) for i in range(len(masks))]) + 1
         one_hot_mask = []
         for i in range(len(masks)):
-            one_hot_mask.append(torch.nn.functional.one_hot(masks[i].long(), num_classes).permute(2, 0, 1))
+            one_hot_mask.append(torch.nn.functional.one_hot(masks[i].long(), num_classes).permute(2, 0, 1).float())
         return one_hot_mask
 
     def __len__(self) -> int:
         return len(self.ecg_scan_files)
 
     def __getitem__(self, idx: int) -> Tuple[torch.Tensor, torch.Tensor]:
-        return self.ecg_scans[idx], self.ecg_masks[idx]
+        scan, mask = self.ecg_scans[idx], self.ecg_masks[idx]
+        if self.transform:
+            scan, mask = self.transform(scan, mask)
+        return scan, mask
