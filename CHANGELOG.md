@@ -1,6 +1,19 @@
 # CHANGELOG
 
 
+## v0.8.0 (2024-12-27)
+
+### Features
+
+* feat: perspective detector handles binarization ([`2b743d2`](https://github.com/Ahus-AIM/Electrocardiogram-Digitization/commit/2b743d28a4d2a85a8befb3885ebb9d1bbea59951))
+
+### Unknown
+
+* Merge pull request #9 from Ahus-AIM/binarize_in_perspective
+
+Perspective RGB ([`9b69d6d`](https://github.com/Ahus-AIM/Electrocardiogram-Digitization/commit/9b69d6d30be3a590d15aec87078538946df6e337))
+
+
 ## v0.7.0 (2024-12-27)
 
 ### Bug Fixes
