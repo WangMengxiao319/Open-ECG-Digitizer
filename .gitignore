@@ -4,3 +4,4 @@ __pycache__
 venv
 .vscode
 src/scripts/visualized_transforms
+src/report/figures
