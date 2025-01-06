@@ -1,6 +1,29 @@
 # CHANGELOG
 
 
+## v0.8.1 (2025-01-06)
+
+### Bug Fixes
+
+* fix: reduce edge effects for robustness ([`96b69d1`](https://github.com/Ahus-AIM/Electrocardiogram-Digitization/commit/96b69d1bfb89f5c22adc2bf31e2bb1bfd2caabe6))
+
+* fix: require grid pixels to be minima ([`1379dbe`](https://github.com/Ahus-AIM/Electrocardiogram-Digitization/commit/1379dbea386b53d5c48d0621058569b5ad3f9dda))
+
+### Documentation
+
+* docs: example of perspective estimation on real image ([`b5b984d`](https://github.com/Ahus-AIM/Electrocardiogram-Digitization/commit/b5b984d91c0e142c7f154bd6748e766783832b11))
+
+* docs: pgf figure image to angle/radius ([`f8bb721`](https://github.com/Ahus-AIM/Electrocardiogram-Digitization/commit/f8bb721079d00b64b7ce08d780bd04f304baecdb))
+
+* docs: illustrate perspective correction ([`098c0c9`](https://github.com/Ahus-AIM/Electrocardiogram-Digitization/commit/098c0c97083b1522fc016930babb8fb819055650))
+
+### Unknown
+
+* Merge pull request #10 from Ahus-AIM/perspective_figure
+
+Perspective figure ([`5ddc2eb`](https://github.com/Ahus-AIM/Electrocardiogram-Digitization/commit/5ddc2eb8a2bb25e800b1b17512592ec50112cace))
+
+
 ## v0.8.0 (2024-12-27)
 
 ### Features
