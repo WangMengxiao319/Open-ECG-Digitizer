@@ -4,7 +4,7 @@ MODEL:
     in_chans: 3
     out_channel: 3
     dims: [8, 32, 64, 64, 128, 128]
-    depths: [2, 2, 2, 2, 2, 2]
+    depth: 2
 
 TRAIN:
   COMPILE: True
@@ -37,10 +37,10 @@ HYPERPARAMETER_SEARCH:
           SAMPLE_TYPE: 'ray.tune.grid_search'
           KWARGS:
             values: [[8, 32, 64, 64, 128, 128]]
-        depths:
+        depth:
           SAMPLE_TYPE: 'ray.tune.grid_search'
           KWARGS:
-            values: [[2, 2, 2, 2, 2, 2]]
+            values: [2, 4, 8]
 
 DATALOADER:
   class_path: 'torch.utils.data.DataLoader'

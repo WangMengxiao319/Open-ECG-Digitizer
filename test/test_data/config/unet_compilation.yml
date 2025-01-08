@@ -3,7 +3,7 @@ MODEL:
   KWARGS:
     in_chans: 3
     out_channel: 3
-    depths: [1, 2]
+    depth: 2
     dims: [1, 2]
 
 TRAIN:

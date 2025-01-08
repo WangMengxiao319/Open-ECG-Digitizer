@@ -8,20 +8,17 @@ class UNet(nn.Module):
         self,
         in_chans: int = 3,
         out_channel: int = 3,
-        depths: List[int] = [3, 3, 9, 3],
+        depth: int = 3,
         dims: List[int] = [96, 192, 384, 768],
     ):
         super(UNet, self).__init__()
 
-        self.depths = depths
+        self.depth = depth
         self.dims = dims
 
         # Encoder blocks
         self.encoders = nn.ModuleList(
-            [
-                self._make_encoder_block(in_chans if i == 0 else dims[i - 1], dims[i], depths[i])
-                for i in range(len(dims))
-            ]
+            [self._make_encoder_block(in_chans if i == 0 else dims[i - 1], dims[i], depth) for i in range(len(dims))]
         )
 
         # Decoder blocks
