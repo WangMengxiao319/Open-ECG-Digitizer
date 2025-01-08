@@ -3,23 +3,23 @@ MODEL:
   KWARGS:
     in_chans: 3
     out_channel: 3
-    depths: [3, 3, 9, 3]
-    dims: [8, 16, 32, 64]
+    dims: [8, 32, 64, 64, 128, 128]
+    depths: [2, 2, 2, 2, 2, 2]
 
 TRAIN:
-  COMPILE: False
-  CUDNN_BENCHMARK: True
+  COMPILE: True
+  CUDNN_BENCHMARK: False
   OPTIMIZER:
-    class_path: 'torch.optim.Adam'
+    class_path: 'torch.optim.AdamW'
     KWARGS:
-      lr: 0.001
+      lr: 0.0003
   MIXED_PRECISION_SCALER:
     class_path: 'torch.amp.GradScaler'
     KWARGS: {}
   CRITERION:
-    class_path: 'src.loss.loss.WeightedCrossEntropyLoss'
+    class_path: 'src.loss.loss.WeightedDiceLoss'
     KWARGS:
-      alpha: 2.0
+      alpha: 1.0
   KWARGS:
     epochs: 10
     metrics: []
@@ -43,61 +43,33 @@ HYPERPARAMETER_SEARCH:
       KWARGS:
         dims:
           SAMPLE_TYPE: 'ray.tune.grid_search'
-          VALUES: [[16, 32, 64, 64, 64]]
+          VALUES: [[8, 32, 64, 64, 128, 128]]
         depths:
           SAMPLE_TYPE: 'ray.tune.grid_search'
-          VALUES: [[2, 2, 2, 2, 2]]
+          VALUES: [[2, 2, 2, 2, 2, 2]]
 
 DATALOADER:
   class_path: 'torch.utils.data.DataLoader'
   KWARGS:
     batch_size: 1
     shuffle: False
-    num_workers: 2
+    num_workers: 3
 
 DATASET:
   class_path: 'src.dataset.ecg_scan.ECGScanDataset'
   KWARGS: {}
-
-  TRANSFORM_COMMON: &TRANSFORM_COMMON
-    class_path: 'src.transform.vision.ComposedTransform'
-    KWARGS:
-      transform_config:
-        - class_path: 'src.transform.vision.GreyscaleTransform'
-          KWARGS: {}
-        - class_path: 'src.transform.vision.RandomShiftTextTransform'
-          KWARGS: {}
-        - class_path: 'src.transform.vision.RandomTextOverlayTransform'
-          KWARGS: {}
-        - class_path: 'src.transform.vision.RandomFlipTransform'
-          KWARGS: {}
-        - class_path: 'src.transform.vision.RandomBlurOrSharpnessTransform'
-          KWARGS: {}
-        - class_path: 'src.transform.vision.RandomGammaTransform'
-          KWARGS: {}
-        - class_path: 'src.transform.vision.RandomResizedCropTransform'
-          KWARGS: {}
-        - class_path: 'src.transform.vision.RandomRotation'
-          KWARGS: {}
-        - class_path: 'src.transform.vision.RandomJPEGCompression'
-          KWARGS: {}
-        - class_path: 'src.transform.vision.RandomGradientOverlay'
-          KWARGS: {}
-        - class_path: 'src.transform.vision.RefineMask'
-          KWARGS: {}
   TRAIN:
     KWARGS:
-      ecg_scan_path: '../../data/ecg/ecg_scans/train'
-      ecg_mask_path: '../../data/ecg/ecg_masks/train'
-    TRANSFORM: *TRANSFORM_COMMON
+      ecg_scan_path: '/data/ecg_dataset/ecg_scans/train_transformed'
+      ecg_mask_path: '/data/ecg_dataset/ecg_masks/train_transformed'
+      load_n: 50
   VAL:
     KWARGS:
-      ecg_scan_path: '../../data/ecg/ecg_scans/val'
-      ecg_mask_path: '../../data/ecg/ecg_masks/val'
-      load_n: 1
-    TRANSFORM: *TRANSFORM_COMMON
+      ecg_scan_path: '/data/ecg_dataset/ecg_scans/val_transformed'
+      ecg_mask_path: '/data/ecg_dataset/ecg_masks/val_transformed'
+      load_n: 3
   TEST:
     KWARGS:
-      ecg_scan_path: '../../data/ecg/ecg_scans/test'
-      ecg_mask_path: '../../data/ecg/ecg_masks/test'
+      ecg_scan_path: '/data/ecg_dataset/ecg_scans/test'
+      ecg_mask_path: '/data/ecg_dataset/ecg_masks/test'
       load_n: 1
