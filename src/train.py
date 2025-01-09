@@ -20,6 +20,7 @@ def run_epoch(
     dataloader: torch.utils.data.DataLoader[Any],
     optimizer: Optional[torch.optim.Optimizer] = None,
     mixed_precision_scaler: Optional[torch.amp.grad_scaler.GradScaler] = None,
+    lr_scheduler: Optional[torch.optim.lr_scheduler.LRScheduler] = None,
     eval: bool = False,
     epoch: Optional[int] = None,
     max_epochs: Optional[int] = None,
@@ -70,6 +71,9 @@ def run_epoch(
                     loss.backward()
                     optimizer.step()  # type: ignore
 
+                if lr_scheduler:
+                    lr_scheduler.step()
+
             total_loss += loss.item()
             num_cases += predictors.shape[0]
 
@@ -86,6 +90,7 @@ def train(
     val_dataloader: torch.utils.data.DataLoader[Any],
     optimizer: torch.optim.Optimizer,
     mixed_precision_scaler: Optional[torch.amp.grad_scaler.GradScaler],
+    lr_scheduler: Optional[torch.optim.lr_scheduler.LRScheduler],
     use_ray: bool,
     epochs: int,
     metrics: Dict[Any, Any],
@@ -122,6 +127,7 @@ def train(
             train_dataloader,
             optimizer,
             mixed_precision_scaler=mixed_precision_scaler,
+            lr_scheduler=lr_scheduler,
             eval=False,
             epoch=epoch,
             max_epochs=num_epochs,
@@ -197,6 +203,11 @@ def load_and_train(ray_config: CN, config: CN) -> None:
         if hasattr(config.TRAIN, "MIXED_PRECISION_SCALER")
         else None
     )
+    lr_scheduler = (
+        import_class_from_path(config.TRAIN.LR_SCHEDULER.class_path)(optimizer, **config.TRAIN.LR_SCHEDULER.KWARGS)
+        if hasattr(config.TRAIN, "LR_SCHEDULER")
+        else None
+    )
     criterion = import_class_from_path(config.TRAIN.CRITERION.class_path)()
     train_dataloader, val_dataloader, test_dataloder = get_data_loaders(config.DATASET, config.DATALOADER.KWARGS)
 
@@ -217,6 +228,7 @@ def load_and_train(ray_config: CN, config: CN) -> None:
         val_dataloader,
         optimizer,
         mixed_precision_scaler=mixed_precision_scaler,
+        lr_scheduler=lr_scheduler,
         use_ray=bool(ray_config),
         **config.TRAIN.KWARGS,
     )
