@@ -1,10 +1,37 @@
 from yacs.config import CfgNode as CN
-from typing import Any
-from typing import Dict, Tuple
+from typing import Any, Dict, Tuple
 from copy import deepcopy
 from torch.utils.data import DataLoader
 from torch import nn
 import importlib
+import math
+from ray.tune import Stopper
+
+
+class EarlyStopper(Stopper):
+    def __init__(self, metric: str, patience: int, delta: float = 0):
+        """Stops the training if the metric does not decrease by at least delta for patience epochs."""
+        super().__init__()
+        self.metric = metric
+        self.patience = patience
+        self.delta = delta
+        self.counter = 0
+        self.best_score = math.inf
+
+    def __call__(self, trial_id: str, result: Dict[str, Any]) -> bool:
+        score = result[self.metric]
+
+        if score >= self.best_score - self.delta:
+            self.counter += 1
+        else:
+            self.counter = 0
+
+        self.best_score = min(self.best_score, score)
+
+        return self.patience <= self.counter
+
+    def stop_all(self) -> bool:
+        return False
 
 
 def get_data_loaders(

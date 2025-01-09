@@ -261,6 +261,11 @@ def main(config: CN) -> Optional[ExperimentAnalysis]:
         if "SCHEDULER" in config.HYPERPARAMETER_SEARCH
         else None
     )
+    stopper = (
+        import_class_from_path(config.TRAIN.STOPPER.class_path)(**config.TRAIN.STOPPER.KWARGS)
+        if "STOPPER" in config.TRAIN
+        else None
+    )
 
     # Set seed for Ray Tune's random search. If you remove this line, you will
     # get different configurations each time you run the script.
@@ -272,6 +277,7 @@ def main(config: CN) -> Optional[ExperimentAnalysis]:
         config=ray_config,
         num_samples=1,
         scheduler=scheduler,
+        stop=stopper,
     )
     return result  # type: ignore
 

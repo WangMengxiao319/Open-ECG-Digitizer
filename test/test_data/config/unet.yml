@@ -9,6 +9,12 @@ MODEL:
 TRAIN:
   COMPILE: False
   CUDNN_BENCHMARK: True
+  STOPPER:
+    class_path: 'src.utils.EarlyStopper'
+    KWARGS:
+      metric: 'val_loss'
+      patience: 2
+      delta: 0
   OPTIMIZER:
     class_path: 'torch.optim.Adam'
     KWARGS:
