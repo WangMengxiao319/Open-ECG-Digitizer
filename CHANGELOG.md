@@ -1,6 +1,25 @@
 # CHANGELOG
 
 
+## v0.12.0 (2025-01-10)
+
+### Bug Fixes
+
+* fix: do not crash on bad segmentation input ([`827f10b`](https://github.com/Ahus-AIM/Electrocardiogram-Digitization/commit/827f10bc580251508457d157b557caf11bf02204))
+
+### Features
+
+* feat: add maximum limit on nonzero pixels ([`7c2daa7`](https://github.com/Ahus-AIM/Electrocardiogram-Digitization/commit/7c2daa7e9c8cbea925a1d2b1cefc8f6558972214))
+
+* feat: digitization wrapper for inference ([`6be01c8`](https://github.com/Ahus-AIM/Electrocardiogram-Digitization/commit/6be01c8116ee83e941b8a60f6c2a9ba13a281480))
+
+### Unknown
+
+* Merge pull request #14 from Ahus-AIM/inference
+
+Inference ([`afb6d59`](https://github.com/Ahus-AIM/Electrocardiogram-Digitization/commit/afb6d59ff24082d9be07004dc0b314d3f801651e))
+
+
 ## v0.11.0 (2025-01-08)
 
 ### Features
