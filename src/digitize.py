@@ -2,7 +2,7 @@ import os
 import torch
 import matplotlib.pyplot as plt
 from tqdm import tqdm
-from torchvision.io import read_image
+from torchvision.io import decode_image
 from src.config.default import get_cfg
 from src.utils import import_class_from_path
 from yacs.config import CfgNode as CN
@@ -32,7 +32,7 @@ def main(config: CN) -> None:
     loading_bar = tqdm(load_file_paths(config.DATA))
 
     for file_path in loading_bar:
-        image = read_image(file_path)
+        image = decode_image(file_path, mode="RGB")
         image = adjust_image_shape(image)
         got_values = inference_wrapper(image)
 
