@@ -1,6 +1,27 @@
 # CHANGELOG
 
 
+## v0.14.0 (2025-01-13)
+
+### Bug Fixes
+
+* fix: load weights to correct device and do not sort snake ([`e85d518`](https://github.com/Ahus-AIM/Electrocardiogram-Digitization/commit/e85d5181cc436de59a8886c385c0f938733f188c))
+
+* fix: remove erosion and edge effects ([`33610fc`](https://github.com/Ahus-AIM/Electrocardiogram-Digitization/commit/33610fca3c3fa04eeab0fa01098f4c6a2081d463))
+
+* fix: specify RGB to avoid bug ([`d811287`](https://github.com/Ahus-AIM/Electrocardiogram-Digitization/commit/d811287690ab231bd092e536c4801c3020ee6dc2))
+
+### Features
+
+* feat: optional automatic estimation of num peaks ([`9f9deff`](https://github.com/Ahus-AIM/Electrocardiogram-Digitization/commit/9f9deff0b95abcbc86669cd82a063de8f74d0117))
+
+### Unknown
+
+* Merge pull request #16 from Ahus-AIM/fixes
+
+Fixes ([`f7569f2`](https://github.com/Ahus-AIM/Electrocardiogram-Digitization/commit/f7569f26809911d2cf2e971d2e6a70e2be61ac5d))
+
+
 ## v0.13.0 (2025-01-13)
 
 ### Bug Fixes
