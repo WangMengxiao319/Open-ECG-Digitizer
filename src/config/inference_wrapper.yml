@@ -16,8 +16,8 @@ MODEL:
         class_path: 'src.model.unet.UNet'
         weight_path: '/home/stenheli/ray_results/load_and_train_2025-01-02_07-50-08/load_and_train_2faeb_00000_0_depths=2_2_2_2_2_2,dims=8_32_64_64_128_128_2025-01-02_07-50-08/checkpoint_000023/checkpoint.pt'
         KWARGS:
-          in_chans: 3
-          out_channel: 3
+          num_in_channels: 3
+          num_out_channels: 3
           dims: [8, 32, 64, 64, 128, 128]
           depths: [2, 2, 2, 2, 2, 2]
     device: 'cuda:0'

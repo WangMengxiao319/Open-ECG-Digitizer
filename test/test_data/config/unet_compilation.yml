@@ -1,8 +1,8 @@
 MODEL:
   class_path: 'src.model.unet.UNet'
   KWARGS:
-    in_chans: 3
-    out_channel: 3
+    num_in_channels: 3
+    num_out_channels: 3
     depth: 2
     dims: [1, 2]
 

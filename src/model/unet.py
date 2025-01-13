@@ -6,8 +6,8 @@ import torch
 class UNet(nn.Module):
     def __init__(
         self,
-        in_chans: int = 3,
-        out_channel: int = 3,
+        num_in_channels: int = 3,
+        num_out_channels: int = 3,
         depth: int = 3,
         dims: List[int] = [96, 192, 384, 768],
     ):
@@ -18,7 +18,10 @@ class UNet(nn.Module):
 
         # Encoder blocks
         self.encoders = nn.ModuleList(
-            [self._make_encoder_block(in_chans if i == 0 else dims[i - 1], dims[i], depth) for i in range(len(dims))]
+            [
+                self._make_encoder_block(num_in_channels if i == 0 else dims[i - 1], dims[i], depth)
+                for i in range(len(dims))
+            ]
         )
 
         # Decoder blocks
@@ -27,7 +30,7 @@ class UNet(nn.Module):
         )
 
         # Final output layer
-        self.final_conv = nn.Conv2d(dims[0], out_channel, kernel_size=1)
+        self.final_conv = nn.Conv2d(dims[0], num_out_channels, kernel_size=1)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         skips = []
@@ -51,29 +54,29 @@ class UNet(nn.Module):
         x = self.final_conv(x)
         return x
 
-    def _make_encoder_block(self, in_channels: int, out_channels: int, num_layers: int) -> nn.Sequential:
-        layers = [self._conv_bn_relu(in_channels, out_channels)]
+    def _make_encoder_block(self, in_channels: int, num_out_channelss: int, num_layers: int) -> nn.Sequential:
+        layers = [self._conv_bn_relu(in_channels, num_out_channelss)]
         for _ in range(num_layers - 1):
-            layers.append(self._conv_bn_relu(out_channels, out_channels))
+            layers.append(self._conv_bn_relu(num_out_channelss, num_out_channelss))
         return nn.Sequential(*layers)
 
-    def _make_decoder_block(self, in_channels: int, out_channels: int) -> nn.Sequential:
+    def _make_decoder_block(self, in_channels: int, num_out_channelss: int) -> nn.Sequential:
         return nn.Sequential(
-            self._conv_bn_relu(in_channels, out_channels),
-            self._conv_bn_relu(out_channels, out_channels),
+            self._conv_bn_relu(in_channels, num_out_channelss),
+            self._conv_bn_relu(num_out_channelss, num_out_channelss),
         )
 
-    def _conv_bn_relu(self, in_channels: int, out_channels: int) -> nn.Sequential:
+    def _conv_bn_relu(self, in_channels: int, num_out_channelss: int) -> nn.Sequential:
         return nn.Sequential(
             nn.Conv2d(
                 in_channels,
-                out_channels,
+                num_out_channelss,
                 kernel_size=3,
                 padding=1,
                 bias=False,
                 padding_mode="replicate",
             ),
-            nn.BatchNorm2d(out_channels),
+            nn.BatchNorm2d(num_out_channelss),
             nn.ReLU(inplace=True),
         )
 
