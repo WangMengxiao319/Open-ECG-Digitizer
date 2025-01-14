@@ -9,7 +9,11 @@ SIGNAL_CLASS: int = 2
 
 class MulticlassBinaryLoss(nn.Module):
     def __init__(
-        self, multiclass_loss: type[nn.Module], signal_class: int = SIGNAL_CLASS, **multiclass_loss_kwargs: Any
+        self,
+        multiclass_loss: type[nn.Module],
+        split_name: str = "",
+        signal_class: int = SIGNAL_CLASS,
+        **multiclass_loss_kwargs: Any,
     ) -> None:
         """
         Args:
@@ -17,6 +21,7 @@ class MulticlassBinaryLoss(nn.Module):
             signal_class (int, optional): The class that is considered the signal class.
         """
         super(MulticlassBinaryLoss, self).__init__()
+        self.split_name: str = split_name
         self.signal_class: int = signal_class
         self.multiclass_loss_kwargs: Dict[Any, Any] = multiclass_loss_kwargs
         self.binary_signal_class: int = 0  # As this class collapses the problem to binary classification.
@@ -86,14 +91,22 @@ class WeightedDiceLoss(nn.Module):
 
 
 class MulticlassBinaryDiceLoss(MulticlassBinaryLoss):
-    def __init__(self, alpha: float = 1.0, signal_class: int = SIGNAL_CLASS, union_exponent: int = 1) -> None:
+    def __init__(
+        self, split_name: str = "", alpha: float = 1.0, signal_class: int = SIGNAL_CLASS, union_exponent: int = 1
+    ) -> None:
         super(MulticlassBinaryDiceLoss, self).__init__(
-            WeightedDiceLoss, signal_class, alpha=alpha, union_exponent=union_exponent
+            WeightedDiceLoss,
+            split_name=split_name,
+            signal_class=signal_class,
+            alpha=alpha,
+            union_exponent=union_exponent,
         )
+        self.alpha = alpha
+        self.union_exponent = union_exponent
 
     @property
     def __name__(self) -> str:
-        return "multiclass_binary_dice_loss"
+        return f"{self.split_name}_multiclass_binary_dice_loss_alpha={self.alpha:.2f}_union_exp={self.union_exponent}_signal={self.signal_class}"
 
 
 class WeightedCrossEntropyLoss(nn.Module):
@@ -134,12 +147,17 @@ class WeightedCrossEntropyLoss(nn.Module):
 
 
 class MulticlassBinaryCrossEntropyLoss(MulticlassBinaryLoss):
-    def __init__(self, alpha: float = 1.0, signal_class: int = SIGNAL_CLASS) -> None:
-        super(MulticlassBinaryCrossEntropyLoss, self).__init__(WeightedCrossEntropyLoss, signal_class, alpha=alpha)
+    def __init__(self, split_name: str = "", alpha: float = 1.0, signal_class: int = SIGNAL_CLASS) -> None:
+        super(MulticlassBinaryCrossEntropyLoss, self).__init__(
+            WeightedCrossEntropyLoss, split_name=split_name, signal_class=signal_class, alpha=alpha
+        )
+        self.alpha = alpha
 
     @property
     def __name__(self) -> str:
-        return "multiclass_binary_cross_entropy_loss"
+        return (
+            f"{self.split_name}_multiclass_binary_cross_entropy_loss_alpha={self.alpha:.2f}_signal={self.signal_class}"
+        )
 
 
 class FourierLoss(nn.Module):

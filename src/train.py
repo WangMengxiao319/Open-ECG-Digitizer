@@ -50,9 +50,8 @@ def run_epoch(
     targets = []
     progress_bar = tqdm(dataloader)
 
-    dataset_split = "train" if not eval else "val"
     metrics = metric_instances or []
-    stored_metrics: Dict[str, List[torch.Tensor]] = {f"{dataset_split}_{metric.__name__}": [] for metric in metrics}
+    stored_metrics: Dict[str, List[torch.Tensor]] = {metric.__name__: [] for metric in metrics}
 
     for predictors, target in progress_bar:
         with torch.set_grad_enabled(not eval):
@@ -73,10 +72,14 @@ def run_epoch(
 
                 loss = criterion(output, target)
 
-                if eval:
-                    continue
+                with torch.no_grad():
+                    for metric in metrics:
+                        metric_value = metric(output, target)
+                        stored_metrics[metric.__name__].append(metric_value.detach().cpu().float().numpy())
 
-                if mixed_precision_scaler:
+                if eval:
+                    pass
+                elif mixed_precision_scaler:
                     mixed_precision_scaler.scale(loss).backward()
                     mixed_precision_scaler.step(optimizer)  # type: ignore
                     mixed_precision_scaler.update()
@@ -86,10 +89,6 @@ def run_epoch(
 
                 if lr_scheduler:
                     lr_scheduler.step()
-
-                for metric in metrics:
-                    metric = metric(output, target)
-                    stored_metrics[f"{dataset_split}_{metric.__name__}"].append(metric.float().numpy())
 
             total_loss += loss.item()
             num_cases += predictors.shape[0]
@@ -127,17 +126,22 @@ def train(
     running_val_losses = []
     num_epochs = epochs
 
-    metrics_instances = []
+    metrics_per_split = {}
+    val_split_prefix = "val"
+    train_split_prefix = "train"
 
-    for metric in metrics:
-        if metric.get("fit", False):
-            metric_class = import_class_from_path(metric["class_path"])(**metric["KWARGS"])
-            metric_class.fit(train_dataloader.dataset.data)  # type: ignore
-        else:
-            metric_class = import_class_from_path(metric["class_path"])(**metric["KWARGS"])
-        metrics_instances.append(metric_class)
+    for split_name in [train_split_prefix, val_split_prefix]:
+        curr_metrics = []
+        for metric in metrics:
+            if metric.get("fit", False):
+                metric_class = import_class_from_path(metric["class_path"])(split_name=split_name, **metric["KWARGS"])
+                metric_class.fit(train_dataloader.dataset.data)  # type: ignore
+            else:
+                metric_class = import_class_from_path(metric["class_path"])(split_name=split_name, **metric["KWARGS"])
+            curr_metrics.append(metric_class)
+        metrics_per_split[split_name] = curr_metrics
 
-    best_metrics = {metric.__name__: -np.inf for metric in metrics_instances}
+    best_val_metrics = {metric.__name__: -np.inf for metric in metrics_per_split[val_split_prefix]}
     lowest_val_loss = np.inf
 
     for epoch in range(num_epochs):
@@ -153,6 +157,7 @@ def train(
             max_epochs=num_epochs,
             device=device,
             return_epoch_data=False,
+            metric_instances=metrics_per_split[train_split_prefix],
         )
         running_train_losses.append(train_loss / train_cases)
 
@@ -167,6 +172,7 @@ def train(
             max_epochs=num_epochs,
             device=device,
             return_epoch_data=False,
+            metric_instances=metrics_per_split[val_split_prefix],
         )
 
         running_val_losses.append(val_loss / val_cases)
@@ -177,8 +183,8 @@ def train(
         lowest_val_loss = min(curr_val_loss, lowest_val_loss)
 
         for name, value in val_metrics.items():
-            if value < best_metrics[name]:
-                best_metrics[name] = value
+            if value < best_val_metrics[name]:
+                best_val_metrics[name] = value
                 is_new_best_metric = True
 
         results = {"train_loss": train_loss / train_cases, "val_loss": curr_val_loss} | calculated_metrics
@@ -190,7 +196,7 @@ def train(
                 torch.save((model.state_dict(), optimizer.state_dict()), path)
                 checkpoint = Checkpoint.from_directory(temp_checkpoint_dir)
                 ray.train.report(
-                    {"train_loss": train_loss / train_cases, "val_loss": curr_val_loss} | calculated_metrics,
+                    results,
                     checkpoint=checkpoint,
                 )
         else:
