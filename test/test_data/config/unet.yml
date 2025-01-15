@@ -28,7 +28,7 @@ TRAIN:
       T_max: 10
       eta_min_divisor: 10.0
   CRITERION:
-    class_path: 'src.loss.loss.WeightedDiceLoss'
+    class_path: 'src.loss.loss.WeightedDiceLossSquared'
     KWARGS: {}
   KWARGS:
     epochs: 1

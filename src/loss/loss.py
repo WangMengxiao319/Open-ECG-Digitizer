@@ -90,6 +90,11 @@ class WeightedDiceLoss(nn.Module):
         return dice.mean()
 
 
+class WeightedDiceLossSquared(WeightedDiceLoss):
+    def __init__(self, alpha: float = 1.0, signal_class: int = SIGNAL_CLASS) -> None:
+        super(WeightedDiceLossSquared, self).__init__(alpha=alpha, signal_class=signal_class, union_exponent=2)
+
+
 class MulticlassBinaryDiceLoss(MulticlassBinaryLoss):
     def __init__(
         self, split_name: str = "", alpha: float = 1.0, signal_class: int = SIGNAL_CLASS, union_exponent: int = 1
