@@ -12,7 +12,7 @@ TRAIN:
   LR_SCHEDULER:
     class_path: 'src.utils.CosineToConstantLR'
     KWARGS:
-      T_max: 2000
+      T_max: 10000
       eta_min_divisor: 10.0
   STOPPER:
     class_path: 'src.utils.EarlyStopper'
@@ -32,7 +32,7 @@ TRAIN:
     KWARGS:
       alpha: 1.0
   KWARGS:
-    epochs: 1000
+    epochs: 50
     metrics: []
     device: 'cuda:0'
     metrics:
@@ -52,33 +52,23 @@ TRAIN:
 
 HYPERPARAMETER_SEARCH:
   SEARCH_SPACE:
-    MODEL:
-      KWARGS:
-        dims:
-          SAMPLE_TYPE: 'ray.tune.grid_search'
-          KWARGS:
-            values: [[8, 32, 64, 64, 128, 128]]
-        depth:
-          SAMPLE_TYPE: 'ray.tune.grid_search'
-          KWARGS:
-            values: [2, 4]
     TRAIN:
       OPTIMIZER:
         KWARGS:
           lr:
             SAMPLE_TYPE: 'ray.tune.grid_search'
             KWARGS:
-              values: [1e-3, 1e-4, 1e-5]
+              values: [1e-3, 1e-4]
       CRITERION:
         class_path:
           SAMPLE_TYPE: 'ray.tune.grid_search'
           KWARGS:
-            values: ['src.loss.loss.WeightedDiceLoss', 'src.loss.loss.WeightedCrossEntropyLoss']
+            values: ['src.loss.loss.WeightedDiceLoss', 'src.loss.loss.WeightedDiceLossSquared', 'src.loss.loss.WeightedCrossEntropyLoss']
         KWARGS:
           alpha:
             SAMPLE_TYPE: 'ray.tune.grid_search'
             KWARGS:
-              values: [1.0, 2.0, 10.0]
+              values: [1.0, 2.0]
 
 DATALOADER:
   class_path: 'torch.utils.data.DataLoader'
@@ -95,14 +85,13 @@ DATASET:
   KWARGS: {}
   TRAIN:
     KWARGS:
-      ecg_scan_path: '/data/ecg_dataset/ecg_scans/train_transformed'
-      ecg_mask_path: '/data/ecg_dataset/ecg_masks/train_transformed'
+      ecg_scan_path: '/data/generated_images/transformed/scans/train'
+      ecg_mask_path: '/data/generated_images/transformed/scans/train'
   VAL:
     KWARGS:
-      ecg_scan_path: '/data/ecg_dataset/ecg_scans/val_transformed'
-      ecg_mask_path: '/data/ecg_dataset/ecg_masks/val_transformed'
-      load_n: 20
+      ecg_scan_path: '/data/generated_images/transformed/scans/val'
+      ecg_mask_path: '/data/generated_images/transformed/scans/val'
   TEST:
     KWARGS:
-      ecg_scan_path: '/data/ecg_dataset/ecg_scans/test'
-      ecg_mask_path: '/data/ecg_dataset/ecg_masks/test'
+      ecg_scan_path: '/data/generated_images/transformed/scans/test'
+      ecg_mask_path: '/data/generated_images/transformed/scans/test'
