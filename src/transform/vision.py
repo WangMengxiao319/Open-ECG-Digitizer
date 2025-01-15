@@ -107,12 +107,17 @@ class RandomPerspectiveWithImageTransform(nn.Module):
 
         startpoints = [[0, 0], [img.shape[2], 0], [img.shape[2], img.shape[1]], [0, img.shape[1]]]
         offset_range = 0.5 * self.distortion_scale * img.shape[2]
-        endpoints = (torch.tensor(startpoints) + torch.rand((4, 2)).mul(2 * offset_range) - offset_range / 2).tolist()
+        endpoints = torch.tensor(startpoints) + torch.rand((4, 2)).mul(2 * offset_range) - offset_range / 2
+        midpoint = torch.tensor([img.shape[2] / 2, img.shape[1] / 2])
+        endpoints = endpoints * 0.95 + midpoint[None, :] * 0.05
 
         fill_value = torch.rand((1,)).item()
 
         img = perspective(img.unsqueeze(0), startpoints, endpoints, fill=fill_value).squeeze(0)
         mask = perspective(mask.unsqueeze(0), startpoints, endpoints, fill=0.0).squeeze(0)
+
+        if random_image.shape[1] <= img.shape[1] or random_image.shape[2] <= img.shape[2]:
+            random_image = F.resize(random_image, (img.shape[1] + 5, img.shape[2] + 5))
 
         c11: int = int(torch.randint(0, random_image.shape[1] - img.shape[1], (1,)).item())
         c12: int = c11 + img.shape[1]
@@ -120,7 +125,7 @@ class RandomPerspectiveWithImageTransform(nn.Module):
         c22: int = c21 + img.shape[2]
         random_image = random_image[:, c11:c12, c21:c22]
 
-        img[img == 0.0] = random_image[img == 0.0]
+        img[img == fill_value] = random_image[img == fill_value]
         mask_is_transformed = (mask == 0.0).sum(0) == 3
         mask[0][mask_is_transformed] = 0.5
         mask[1][mask_is_transformed] = 0.5
