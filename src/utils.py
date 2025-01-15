@@ -5,6 +5,7 @@ from copy import deepcopy
 from torch.utils.data import DataLoader
 from torch import nn
 from ray.tune import Stopper
+from collections import defaultdict
 import importlib
 import math
 import torch
@@ -17,20 +18,20 @@ class EarlyStopper(Stopper):
         self.metric = metric
         self.patience = patience
         self.delta = delta
-        self.counter = 0
-        self.best_score = math.inf
+        self.counter: Dict[str, int] = defaultdict(lambda: 0)
+        self.best_score: Dict[str, float] = defaultdict(lambda: math.inf)
 
     def __call__(self, trial_id: str, result: Dict[str, Any]) -> bool:
         score = result[self.metric]
 
-        if score >= self.best_score - self.delta:
-            self.counter += 1
+        if score >= self.best_score[trial_id] - self.delta:
+            self.counter[trial_id] += 1
         else:
-            self.counter = 0
+            self.counter[trial_id] = 0
 
-        self.best_score = min(self.best_score, score)
+        self.best_score[trial_id] = min(self.best_score[trial_id], score)
 
-        return self.patience <= self.counter
+        return self.patience <= self.counter[trial_id]
 
     def stop_all(self) -> bool:
         return False
