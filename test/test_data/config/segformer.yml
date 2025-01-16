@@ -54,8 +54,7 @@ DATASET:
   class_path: 'src.dataset.ecg_scan.ECGScanDataset'
   KWARGS:
     load_n: 1
-    ecg_scan_path: '../../test/test_data/data/ecg_data'
-    ecg_mask_path: '../../test/test_data/data/ecg_data'
+    data_path: '../../test/test_data/data/ecg_data'
 
   TRAIN:
     KWARGS:
