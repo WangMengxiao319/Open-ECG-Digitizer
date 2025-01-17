@@ -56,13 +56,10 @@ DATASET:
 
   TRAIN:
     KWARGS:
-      ecg_scan_path: '/data/ecg_dataset/ecg_scans/train_transformed'
-      ecg_mask_path: '/data/ecg_dataset/ecg_masks/train_transformed'
+      data_path: '/data/generated_images/transformed/train'
   VAL:
     KWARGS:
-      ecg_scan_path: '/data/ecg_dataset/ecg_scans/val_transformed'
-      ecg_mask_path: '/data/ecg_dataset/ecg_masks/val_transformed'
+      data_path: '/data/generated_images/transformed/val'
   TEST:
     KWARGS:
-      ecg_scan_path: '/data/ecg_dataset/ecg_scans/test'
-      ecg_mask_path: '/data/ecg_dataset/ecg_masks/test'
+      data_path: '/data/generated_images/transformed/test'

@@ -35,6 +35,9 @@ def run_epoch(
     if not eval and optimizer is None:
         raise ValueError("Optimizer must be provided for training (eval=False).")
 
+    if len(dataloader) == 0:
+        raise ValueError("Dataloader must not be empty.")
+
     if not isinstance(device, torch.device):
         device = torch.device(device)
 

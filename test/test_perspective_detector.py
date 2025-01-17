@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 
 
 def test_perspective_detector() -> None:
-    image: torch.Tensor = torch.tensor(plt.imread("./test/test_data/data/ecg_scans/10_1.png")).permute(2, 0, 1)
+    image: torch.Tensor = torch.tensor(plt.imread("./test/test_data/data/ecg_data/10_1.png")).permute(2, 0, 1)
 
     pd = PerspectiveDetector(num_thetas=160)
     corrected_image, source_points = pd(image)

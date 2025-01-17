@@ -65,8 +65,7 @@ DATALOADER:
 DATASET:
   class_path: 'src.dataset.ecg_scan.ECGScanDataset'
   KWARGS:
-    ecg_scan_path: '../../test/test_data/data/ecg_scans'
-    ecg_mask_path: '../../test/test_data/data/ecg_masks/masks'
+    data_path: '../../test/test_data/data/ecg_data'
   TRAIN:
     KWARGS: {}
   VAL:
