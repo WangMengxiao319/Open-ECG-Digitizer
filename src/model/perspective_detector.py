@@ -1,5 +1,4 @@
 from typing import Tuple, Dict, Any
-from torchvision.transforms.functional import perspective
 from skimage.filters import threshold_multiotsu
 from skimage.morphology import remove_small_objects, skeletonize
 from torch.nn.functional import avg_pool2d
@@ -16,9 +15,8 @@ def rgb_to_grayscale(image: torch.Tensor) -> torch.Tensor:
 
 class PerspectiveDetector:
 
-    def __init__(self, num_thetas: int, percentile: float = 0.01, max_num_nonzero: int = 100_000) -> None:
+    def __init__(self, num_thetas: int, max_num_nonzero: int = 100_000) -> None:
         self.num_thetas = num_thetas
-        self.percentile = percentile
         self.max_num_nonzero = max_num_nonzero
 
     def hough_transform(self, image: torch.Tensor, thetas: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
@@ -78,7 +76,7 @@ class PerspectiveDetector:
 
     def get_line_values(
         self, accumulator: torch.Tensor, thetas: torch.Tensor, rhos: torch.Tensor
-    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
         r"""Extract the values along a line in the Hough accumulator, parameterized by two thetas: one at the top and
         one at the bottom. The thetas are chosen to maximize the variance along the line and correspond to the
         angles of the lines in the image.
@@ -95,18 +93,7 @@ class PerspectiveDetector:
         max_idx_top = variance.argmax() // (self.num_thetas // 2)
         max_idx_bottom = variance.argmax() % (self.num_thetas // 2)
 
-        line_values, line_thetas = self.extract_line(
-            accumulator,
-            thetas,
-            max_idx_top,
-            max_idx_bottom,
-        )
-
-        line_cumsum = line_values.cumsum(dim=0) / line_values.sum()
-        start = (line_cumsum > self.percentile).nonzero(as_tuple=True)[0][0]
-        end = (line_cumsum > 1 - self.percentile).nonzero(as_tuple=True)[0][0]
-
-        return rhos[start:end], line_thetas[start:end], line_values[start:end]
+        return max_idx_top, max_idx_bottom
 
     def get_theta_lims(self, accumulator: torch.Tensor, thetas: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         r"""
@@ -128,21 +115,18 @@ class PerspectiveDetector:
         theta_top = thetas[max_idx_top]  # index at top of accumulator
         theta_bottom = thetas[max_idx_bottom]  # index at bottom of accumulator
 
-        theta_min = torch.min(theta_top, theta_bottom)
-        theta_max = torch.max(theta_top, theta_bottom)
+        return theta_top, theta_bottom
 
-        return theta_min, theta_max
-
-    def find_bounding_lines(self, image: torch.Tensor, eps: float) -> Dict[str, Tuple[torch.Tensor, torch.Tensor]]:
+    def find_line_params(self, image: torch.Tensor, eps: float) -> Dict[str, torch.Tensor]:
         r"""
-        Find the bounding lines of the gridded paper in an image taken from a camera.
+        Find the defining parameters of the two lines in hough domain corresponding to the vertical and horizontal gridlines in image domain.
 
         Args:
             image (torch.Tensor): The input image tensor, with shape [H, W]. Should be a binary image.
             eps (float): Margin added to the thetas for the second pass of the Hough transform.
 
         Returns:
-            Dict[str, Tuple[torch.Tensor, torch.Tensor]]: The radial and angular values of the bounding lines.
+            Dict[str, torch.Tensor]: The defining parameters of the two lines in hough domain.
         """
         hann = (
             torch.cat([torch.hann_window(self.num_thetas // 2), torch.hann_window(self.num_thetas // 2)])
@@ -163,13 +147,18 @@ class PerspectiveDetector:
             plt.show()
 
         (
-            theta_min_horizontal,
-            theta_max_horizontal,
+            theta_top_horizontal,
+            theta_bottom_horizontal,
         ) = self.get_theta_lims(accumulator[:, : self.num_thetas // 2], thetas[: self.num_thetas // 2])
         (
-            theta_min_vertical,
-            theta_max_vertical,
+            theta_top_vertical,
+            theta_bottom_vertical,
         ) = self.get_theta_lims(accumulator[:, self.num_thetas // 2 :], thetas[self.num_thetas // 2 :])
+
+        theta_min_horizontal = torch.min(theta_top_horizontal, theta_bottom_horizontal)
+        theta_max_horizontal = torch.max(theta_top_horizontal, theta_bottom_horizontal)
+        theta_min_vertical = torch.min(theta_top_vertical, theta_bottom_vertical)
+        theta_max_vertical = torch.max(theta_top_vertical, theta_bottom_vertical)
 
         # PASS 2
         thetas = torch.cat(
@@ -198,31 +187,21 @@ class PerspectiveDetector:
             plt.savefig("accumulator2.png")
             plt.show()
 
-        (
-            rhos_horizontal,
-            thetas_horizontal,
-            values_horizontal,
-        ) = self.get_line_values(accumulator[:, : self.num_thetas // 2], thetas[: self.num_thetas // 2], rhos)
-        (
-            rhos_vertical,
-            thetas_vertical,
-            values_vertical,
-        ) = self.get_line_values(accumulator[:, self.num_thetas // 2 :], thetas[self.num_thetas // 2 :], rhos)
-
-        if DEBUG:
-            fig, ax = plt.subplots(1, 1, figsize=(25, 15))
-            ax.plot(values_horizontal.cpu().numpy(), label="Horizontal")
-            ax.plot(values_vertical.cpu().numpy(), label="Vertical")
-            ax.legend()
-            plt.show()
+        idx_top_horizontal, idx_bottom_horizontal = self.get_line_values(
+            accumulator[:, : self.num_thetas // 2], thetas[: self.num_thetas // 2], rhos
+        )
+        idx_top_vertical, idx_bottom_vertical = self.get_line_values(
+            accumulator[:, self.num_thetas // 2 :], thetas[self.num_thetas // 2 :], rhos
+        )
 
         params = {
-            "left": (rhos_horizontal[0], thetas_horizontal[0]),
-            "right": (rhos_horizontal[-1], thetas_horizontal[-1]),
-            "top": (rhos_vertical[0], thetas_vertical[0]),
-            "bottom": (rhos_vertical[-1], thetas_vertical[-1]),
+            "rho_min": rhos[0],
+            "rho_max": rhos[-1],
+            "theta_min_vertical": thetas[self.num_thetas // 2 + idx_bottom_vertical],
+            "theta_max_vertical": thetas[self.num_thetas // 2 + idx_top_vertical],
+            "theta_min_horizontal": thetas[idx_bottom_horizontal],
+            "theta_max_horizontal": thetas[idx_top_horizontal],
         }
-
         return params
 
     def get_initial_thetas(self) -> torch.Tensor:
@@ -233,7 +212,7 @@ class PerspectiveDetector:
             ]
         )
 
-    def __call__(self, image: torch.Tensor, eps: float = torch.pi / 180) -> Tuple[torch.Tensor, torch.Tensor]:
+    def __call__(self, image: torch.Tensor, eps: float = torch.pi / 180) -> Dict[str, torch.Tensor]:
         r"""
         Correct the perspective of an image of a gridded paper.
 
@@ -242,7 +221,7 @@ class PerspectiveDetector:
             eps (float): Margin added to the thetas for the second pass of the Hough transform.
 
         Returns:
-            Tuple[torch.Tensor, torch.Tensor]: The corrected image tensor and the source points in pixel coordiantes.
+            Dict[str, torch.Tensor]: The defining parameters of the two lines in hough domain.
 
         """
         binary_image = self.binarize(image)
@@ -254,37 +233,8 @@ class PerspectiveDetector:
             plt.savefig("binary_image.png")
             plt.show()
 
-        params = self.find_bounding_lines(binary_image, eps)
-
-        source_points = torch.stack(
-            [
-                self.line_intersection_from_hough(*params["top"], *params["left"]),
-                self.line_intersection_from_hough(*params["top"], *params["right"]),
-                self.line_intersection_from_hough(*params["bottom"], *params["right"]),
-                self.line_intersection_from_hough(*params["bottom"], *params["left"]),
-            ]
-        )
-
-        return self.apply_perspective(image, source_points), source_points
-
-    def apply_perspective(self, image: torch.Tensor, source_points: torch.Tensor) -> torch.Tensor:
-        original_shape = image.shape
-        if image.ndim == 2:  # (H, W)
-            image = image.unsqueeze(0)
-        if image.ndim == 3:  # (C, H, W)
-            image = image.unsqueeze(0)
-
-        H, W = image.shape[-2:]
-        destination_points = [[0.0, 0.0], [W, 0.0], [W, H], [0.0, H]]
-        fill_value = image.median().item()
-        corrected: torch.Tensor = perspective(image, source_points.tolist(), destination_points, fill=fill_value)
-
-        if len(original_shape) == 4:
-            return corrected
-        elif len(original_shape) == 3:
-            return corrected.squeeze(0)
-        else:
-            return corrected.squeeze(0).squeeze(0)
+        params = self.find_line_params(binary_image, eps)
+        return params
 
     def quantile(self, tensor: torch.Tensor, q: float, max_num_elems: int = 10_000) -> torch.Tensor:
         r"""
@@ -392,57 +342,3 @@ class PerspectiveDetector:
         sampled_values = accumulator[y_coords.long(), x_coords_clamped]
         variances = torch.var(sampled_values, dim=0)
         return variances
-
-    def extract_line(
-        self, accumulator: torch.Tensor, thetas: torch.Tensor, x_start: torch.Tensor, x_end: torch.Tensor
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
-        r"""
-        Extract a line from a Hough accumulator tensor.
-
-        Args:
-            accumulator (torch.Tensor): The Hough accumulator tensor.
-            thetas (torch.Tensor): The angles (thetas) corresponding to dim 1 of the tensor.
-            x_start (torch.Tensor): The starting index of the line.
-            x_end (torch.Tensor): The ending index of the line.
-
-        Returns:
-            Tuple[torch.Tensor, torch.Tensor]: The values from the accumulator along the line and the corresponding thetas.
-        """
-        H, W = accumulator.shape
-        if x_start == x_end:
-            return accumulator[:, x_start], thetas[x_start].repeat(H)
-
-        x_coords = torch.linspace(x_start, x_end, steps=H)
-        y_coords = torch.arange(H)
-        sampled_values = accumulator[y_coords.long(), x_coords.round().long()]
-        sampled_thetas = thetas[x_coords.round().long()]
-
-        return sampled_values, sampled_thetas
-
-    def line_intersection_from_hough(
-        self, rho1: torch.Tensor, theta1: torch.Tensor, rho2: torch.Tensor, theta2: torch.Tensor
-    ) -> torch.Tensor:
-        r"""
-        Solves for the intersection point `(x, y)` of two lines represented in Hough space:
-
-        .. math::
-
-            x \sin(\theta_1) + y \cos(\theta_1) = \rho_1 \\
-            x \sin(\theta_2) + y \cos(\theta_2) = \rho_2
-
-        Args:
-            rho1 (torch.Tensor): The radial distance of the first line.
-            theta1 (torch.Tensor): The angle of the first line in radians.
-            rho2 (torch.Tensor): The radial distance of the second line.
-            theta2 (torch.Tensor): The angle of the second line in radians.
-
-        Returns:
-            torch.Tensor: The intersection point `(x, y)` of the two lines.
-        """
-
-        det = torch.cos(theta1) * torch.sin(theta2) - torch.cos(theta2) * torch.sin(theta1)
-        if det.abs() < 1e-6:
-            raise ValueError("Lines are parallel")
-        x = (rho1 * torch.sin(theta2) - rho2 * torch.sin(theta1)) / det
-        y = (rho2 * torch.cos(theta1) - rho1 * torch.cos(theta2)) / det
-        return torch.stack((x, y))

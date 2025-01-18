@@ -9,19 +9,18 @@ class InferenceWrapper(torch.nn.Module):
         self,
         config: CN,
         device: str,
-        segment_then_resample: bool = True,
         resample_size: None | Tuple[int] = None,
         signal_class: int = 2,
     ) -> None:
         super(InferenceWrapper, self).__init__()
         self.config = config
         self.device = device
-        self.segment_then_resample = segment_then_resample
         self.resample_size = resample_size
         self.signal_class = signal_class
         self.snake = self._load_snake()
         self.perspective_detector = self._load_perspective_detector()
         self.segmentation_model = self._load_segmentation_model().to(self.device)
+        self.cropper = self._load_cropper()
 
     @torch.no_grad()
     def forward(self, image: torch.Tensor) -> Dict[str, torch.Tensor]:
@@ -29,21 +28,25 @@ class InferenceWrapper(torch.nn.Module):
         image = self.min_max_normalize(image)
         image = image.to(self.device)
 
-        if self.segment_then_resample:
-            signal_probabilities = self.segment_signal(image)
-            image_aligned, src_points = self.perspective_detector(image)
-            signal_probabilities_aligned = self.perspective_detector.apply_perspective(signal_probabilities, src_points)
-            signal_probabilities_aligned = self.resample(signal_probabilities_aligned)
-        else:  # resamples then semgents
-            image = self.resample(image)
-            image_aligned, src_points = self.perspective_detector(image)
-            signal_probabilities_aligned = self.segment_signal(image_aligned)
-        self.snake.fit(signal_probabilities_aligned.squeeze().cpu())
+        if self.resample_size is not None:
+            image = torch.nn.functional.interpolate(image, size=self.resample_size)
+
+        signal_probabilities = self.segment_signal(image)
+        alignment_params = self.perspective_detector(image)
+
+        source_points = self.cropper(signal_probabilities, alignment_params)
+
+        aligned_signal_probabilities = self.cropper.apply_perspective(signal_probabilities, source_points, fill_value=0)
+        aligned_image = self.cropper.apply_perspective(image, source_points, fill_value=image.mean().item())
+
+        # TODO: unit detection
+
+        self.snake.fit(aligned_signal_probabilities.squeeze().cpu())
 
         out_dict = {
             "image": image.cpu(),
-            "image_aligned": image_aligned.cpu(),
-            "signal_probabilities_aligned": signal_probabilities_aligned.cpu(),
+            "image_aligned": aligned_image.cpu(),
+            "signal_probabilities_aligned": aligned_signal_probabilities.cpu(),
             "snake": self.snake.snake.data.detach(),
         }
         return out_dict
@@ -76,6 +79,11 @@ class InferenceWrapper(torch.nn.Module):
         segmentation_model: torch.nn.Module = segmentation_model_class(**self.config.SEGMENTATION_MODEL.KWARGS)
         self._load_segmentation_model_weights(segmentation_model)
         return segmentation_model
+
+    def _load_cropper(self) -> torch.nn.Module:
+        cropper_class = import_class_from_path(self.config.CROPPER.class_path)
+        cropper: torch.nn.Module = cropper_class(**self.config.CROPPER.KWARGS)
+        return cropper
 
     def _load_segmentation_model_weights(self, segmentation_model: torch.nn.Module) -> None:
         checkpoint = torch.load(

@@ -19,10 +19,14 @@ MODEL:
           num_in_channels: 3
           num_out_channels: 3
           dims: [8, 32, 64, 64, 128, 128]
-          depths: [2, 2, 2, 2, 2, 2]
-    device: 'cuda:0'
-    segment_then_resample: true
-    resample_size: [1700, 2200]
+          depth: 2
+
+      CROPPER:
+        class_path: 'src.model.cropper.Cropper'
+        KWARGS:
+          granularity: 200
+          percentiles: [0.01, 0.99]
+    device: 'cpu'
 
 DATA:
   images_path: '/data/validation_images/'

@@ -1,5 +1,6 @@
 from torchvision.io import read_image
 from src.model.perspective_detector import PerspectiveDetector
+from src.model.cropper import Cropper
 import matplotlib.pyplot as plt
 import torch
 import os
@@ -17,7 +18,8 @@ def show_image(image: torch.Tensor, save_path: str) -> None:
 
 
 def main() -> None:
-    model = PerspectiveDetector(num_thetas=150, percentile=0.001)
+    perspective_detector = PerspectiveDetector(num_thetas=150)
+    cropper = Cropper()
 
     image_paths = [
         "/data/validation_images/IMG20241203092505.jpg",
@@ -30,7 +32,9 @@ def main() -> None:
     for i, image_path in enumerate(image_paths, start=1):
 
         image = read_image(image_path).float().div(255)
-        resampled, src_points = model(image.cuda())
+        params = perspective_detector(image.cuda())
+        src_points = cropper((image.mean(0) < image.mean() / 2).float(), params)
+        resampled = cropper.apply_perspective(image, src_points, 0)
 
         show_image(image, f"src/report/figures/perspective/{i}_raw.png")
         show_image(resampled.cpu(), f"src/report/figures/perspective/{i}_processed.png")
