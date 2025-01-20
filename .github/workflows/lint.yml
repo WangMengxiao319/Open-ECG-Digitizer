@@ -8,7 +8,9 @@ jobs:
       with:
         python-version: '3.12'
     - name: Install flake8
-      run: python3 -m pip install flake8
+      run: |
+        python3 -m pip install flake8
+        echo "PATH=$PATH:~/.local/bin" >> $GITHUB_ENV
     - name: Lint python
       run: flake8 .
     - uses: psf/black@stable
