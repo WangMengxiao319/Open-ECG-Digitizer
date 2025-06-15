@@ -1,19 +1,21 @@
-from ray.tune.analysis.experiment_analysis import ExperimentAnalysis
-from src.config.default import get_cfg, merge_cfg
-from src.utils import load_model, get_data_loaders, import_class_from_path
-from tqdm import tqdm
-from ray.train import Checkpoint
-from typing import Any, Tuple, Optional, Dict, List
-from torch import nn
+import multiprocessing
+import os
+import tempfile
 from functools import partial
-from yacs.config import CfgNode as CN
+from typing import Any, Dict, List, Optional, Tuple
+
 import numpy as np
 import ray
-import tempfile
 import torch
-import os
-import multiprocessing
 import torch._dynamo
+from ray.train import Checkpoint
+from ray.tune.analysis.experiment_analysis import ExperimentAnalysis
+from torch import nn
+from tqdm import tqdm
+from yacs.config import CfgNode as CN
+
+from src.config.default import get_cfg, merge_cfg
+from src.utils import get_data_loaders, import_class_from_path, load_model
 
 
 def run_epoch(
@@ -29,9 +31,8 @@ def run_epoch(
     device: str | torch.device = "cpu",
     return_epoch_data: bool = True,
     metric_instances: Optional[List[nn.Module]] = None,
-) -> Tuple[
-    float, int, List[torch.Tensor], List[torch.Tensor], List[torch.Tensor], List[torch.Tensor], Dict[str, float]
-]:
+    disable_tqdm: bool = False,
+) -> Tuple[float, int, List[torch.Tensor], List[torch.Tensor], List[torch.Tensor], Dict[str, float]]:
     if not eval and optimizer is None:
         raise ValueError("Optimizer must be provided for training (eval=False).")
 
@@ -49,12 +50,11 @@ def run_epoch(
     total_loss = 0.0
     num_cases = 0
     predictions = []
-    embeddings = []
     targets = []
-    progress_bar = tqdm(dataloader)
+    progress_bar = tqdm(dataloader) if not disable_tqdm else dataloader
 
     metrics = metric_instances or []
-    stored_metrics: Dict[str, List[torch.Tensor]] = {metric.__name__: [] for metric in metrics}
+    stored_metrics: Dict[str, List[torch.Tensor]] = {metric.__name__: [] for metric in metrics}  # type: ignore
 
     for predictors, target in progress_bar:
         with torch.set_grad_enabled(not eval):
@@ -69,16 +69,12 @@ def run_epoch(
                     predictions.append(output.detach().cpu())
                     targets.append(target.detach().cpu())
 
-                    with torch.no_grad():
-                        if hasattr(model, "extract_embeddings"):
-                            embeddings.append(model.extract_embeddings(predictors))
-
                 loss = criterion(output, target)
 
                 with torch.no_grad():
                     for metric in metrics:
                         metric_value = metric(output, target)
-                        stored_metrics[metric.__name__].append(metric_value.detach().cpu().float().numpy())
+                        stored_metrics[metric.__name__].append(metric_value.detach().cpu().float().numpy())  # type: ignore
 
                 if eval:
                     pass
@@ -96,13 +92,13 @@ def run_epoch(
             total_loss += loss.item()
             num_cases += predictors.shape[0]
 
-            if epoch:
+            if epoch and not disable_tqdm:
                 max_epochs_str = f"/{max_epochs}" if max_epochs else ""
-                progress_bar.set_description(f"Epoch {epoch + 1}{max_epochs_str}, Loss: {total_loss / num_cases:.4f}")
+                progress_bar.set_description(f"Epoch {epoch + 1}{max_epochs_str}, Loss: {total_loss / num_cases:.4f}")  # type: ignore
 
     calculated_metrics: Dict[str, float] = {key: float(np.mean(value)) for key, value in stored_metrics.items()}
 
-    return total_loss, num_cases, predictors, embeddings, predictions, targets, calculated_metrics
+    return total_loss, num_cases, predictors, predictions, targets, calculated_metrics
 
 
 def train(
@@ -119,9 +115,10 @@ def train(
     device: str | torch.device = "cpu",
 ) -> None:
     if not isinstance(device, torch.device):
+        print(f"Using device: {device}")
         device = torch.device(device)
 
-    print(f"Training model:\n {model}")
+    # print(f"Training model:\n {model}")
     print(f"Trainable model parameters: {sum(p.numel() for p in model.parameters() if p.requires_grad)}")
     model.to(device)
 
@@ -147,8 +144,10 @@ def train(
     best_val_metrics = {metric.__name__: -np.inf for metric in metrics_per_split[val_split_prefix]}
     lowest_val_loss = np.inf
 
-    for epoch in range(num_epochs):
-        train_loss, train_cases, _, _, _, _, train_metrics = run_epoch(
+    epoch_bar = tqdm(range(num_epochs), desc="Training epochs") if use_ray else range(num_epochs)
+
+    for epoch in epoch_bar:
+        train_loss, train_cases, _, _, _, train_metrics = run_epoch(
             model,
             criterion,
             train_dataloader,
@@ -161,10 +160,11 @@ def train(
             device=device,
             return_epoch_data=False,
             metric_instances=metrics_per_split[train_split_prefix],
+            disable_tqdm=use_ray,
         )
         running_train_losses.append(train_loss / train_cases)
 
-        val_loss, val_cases, _, _, _, _, val_metrics = run_epoch(
+        val_loss, val_cases, _, _, _, val_metrics = run_epoch(
             model,
             criterion,
             val_dataloader,
@@ -176,6 +176,7 @@ def train(
             device=device,
             return_epoch_data=False,
             metric_instances=metrics_per_split[val_split_prefix],
+            disable_tqdm=use_ray,
         )
 
         running_val_losses.append(val_loss / val_cases)
@@ -191,8 +192,11 @@ def train(
                 is_new_best_metric = True
 
         results = {"train_loss": train_loss / train_cases, "val_loss": curr_val_loss} | calculated_metrics
+
         if not use_ray:
             print(f"Epoch {epoch + 1}/{num_epochs}: {results}")
+            if os.path.exists("sandbox"):
+                torch.save(model.state_dict(), f"sandbox/weights_{epoch + 1}.pt")
         elif is_new_best_metric:
             with tempfile.TemporaryDirectory() as temp_checkpoint_dir:
                 path = os.path.join(temp_checkpoint_dir, "checkpoint.pt")
@@ -207,7 +211,6 @@ def train(
 
     print(f"Train losses: {running_train_losses}")
     print(f"Val losses: {running_val_losses}")
-    print(f"Training model:\n {model}")
     print(f"Trainable model parameters: {sum(p.numel() for p in model.parameters() if p.requires_grad)}")
 
 
@@ -240,13 +243,7 @@ def load_and_train(ray_config: CN, config: CN) -> None:
     train_fn = train
 
     if config.TRAIN.COMPILE:
-        if ray_config and mixed_precision_scaler:
-            print(
-                "Compilation with torch is disabled when using ray and mixed precision scaler as the compiled "
-                "function is not picklable."
-            )
-        else:
-            train_fn = torch.compile(train_fn)
+        model = torch.compile(model)  # type: ignore
     train_fn(
         model,
         criterion,
@@ -258,7 +255,6 @@ def load_and_train(ray_config: CN, config: CN) -> None:
         use_ray=bool(ray_config),
         **config.TRAIN.KWARGS,
     )
-    print(config)
     return None
 
 
@@ -299,7 +295,7 @@ def main(config: CN) -> Optional[ExperimentAnalysis]:
 
     result = ray.tune.run(
         partial(load_and_train, config=config),
-        resources_per_trial={"cpu": 4, "gpu": 1},
+        resources_per_trial={"cpu": 16, "gpu": 1},
         config=ray_config,
         num_samples=1,
         scheduler=scheduler,
@@ -312,4 +308,3 @@ if __name__ == "__main__":
     multiprocessing.set_start_method("spawn", force=True)  # CUDA does not support "fork", which is default on linux.
     cfg = get_cfg("src/config/unet.yml")
     main(cfg)
-    print(cfg)
