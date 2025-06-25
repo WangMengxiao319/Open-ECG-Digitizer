@@ -2,6 +2,77 @@
 
 <!-- version list -->
 
+## v1.3.0 (2025-06-25)
+
+### Bug Fixes
+
+- Compile model instead of train fn, reduce verbosity, sort imports
+  ([`8212841`](https://github.com/Ahus-AIM/Electrocardiogram-Digitization/commit/821284154db3ab5e3c1cf8efe66953f447ca2ebf))
+
+- Update requirements.txt
+  ([`5724552`](https://github.com/Ahus-AIM/Electrocardiogram-Digitization/commit/572455278e46e30e9ec8ae3cd8ff64e679d5c098))
+
+### Chores
+
+- Ignore sandbox dir for temporary output
+  ([`577c0f1`](https://github.com/Ahus-AIM/Electrocardiogram-Digitization/commit/577c0f1007a89130cee822536d418ff473cbea4e))
+
+- Silence flake8 and mypy warnings
+  ([`8c14d3a`](https://github.com/Ahus-AIM/Electrocardiogram-Digitization/commit/8c14d3ae26da2a9bfd518a4acb663d211c9715ff))
+
+- Update to python 3.12
+  ([`5e2aa75`](https://github.com/Ahus-AIM/Electrocardiogram-Digitization/commit/5e2aa7534b4d02752f0461e93da4689fa95d2cef))
+
+### Code Style
+
+- Sort imports
+  ([`ff5b818`](https://github.com/Ahus-AIM/Electrocardiogram-Digitization/commit/ff5b81862060590cdd52998b127bf22b3bef8ecd))
+
+### Continuous Integration
+
+- Add import sorting workflow
+  ([`80b2c85`](https://github.com/Ahus-AIM/Electrocardiogram-Digitization/commit/80b2c858296b6593896b0e1fe96325a94ae5b4a4))
+
+- Do not use docker container for semantic-release
+  ([`0ebc8c6`](https://github.com/Ahus-AIM/Electrocardiogram-Digitization/commit/0ebc8c6e3bb224481fefe2b8ced35db66f535672))
+
+- Use python 3.12
+  ([`54fc6f3`](https://github.com/Ahus-AIM/Electrocardiogram-Digitization/commit/54fc6f3141513033a060f902304979744eaeb342))
+
+### Documentation
+
+- Add python3.12 badge
+  ([`2be6860`](https://github.com/Ahus-AIM/Electrocardiogram-Digitization/commit/2be6860ebe65331bbc02219d3026d987ff366a40))
+
+### Features
+
+- Add Muon optimizer
+  ([`26bba3e`](https://github.com/Ahus-AIM/Electrocardiogram-Digitization/commit/26bba3e4c34b3279817ddd0975b3bc18de22168a))
+
+- Add skip connections and learnable upsampling to unet
+  ([`2ab8bc2`](https://github.com/Ahus-AIM/Electrocardiogram-Digitization/commit/2ab8bc2841dd3e9bd2f3e4f73c1af4e7cae626c5))
+
+- Better centering in cropper
+  ([`2ae58e7`](https://github.com/Ahus-AIM/Electrocardiogram-Digitization/commit/2ae58e7aec7a9133ea7cc26b78c9c7cbd39dbb77))
+
+- Digitize hierarchical file structure
+  ([`3ddc885`](https://github.com/Ahus-AIM/Electrocardiogram-Digitization/commit/3ddc8856898dc3160d38c9ac1b0718e002866434))
+
+- More robust autodetection of number of leads
+  ([`528f36f`](https://github.com/Ahus-AIM/Electrocardiogram-Digitization/commit/528f36fbfd0727d354ecb02808ee29fc4c4f8b06))
+
+- Upgrade from 3 to 4 classes in segmentation model
+  ([`54c4ba2`](https://github.com/Ahus-AIM/Electrocardiogram-Digitization/commit/54c4ba2c3656dd0be2cfaf05034aa908c6496f7b))
+
+- Visualization of feature map for use in training
+  ([`aa47bd1`](https://github.com/Ahus-AIM/Electrocardiogram-Digitization/commit/aa47bd1a58bd59dda48adb45d32909727ee8c67c))
+
+### Refactoring
+
+- Remove obsolete huggingface segmentation model
+  ([`77768e6`](https://github.com/Ahus-AIM/Electrocardiogram-Digitization/commit/77768e6f2a93631f72561c78f523760bac27936b))
+
+
 ## v1.2.0 (2025-01-21)
 
 ### Bug Fixes
