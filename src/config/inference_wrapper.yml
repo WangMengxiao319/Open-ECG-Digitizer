@@ -2,14 +2,9 @@ MODEL:
   class_path: 'src.model.inference_wrapper.InferenceWrapper'
   KWARGS:
     config:
-      SNAKE:
-        class_path: 'src.model.snake.Snake'
-        KWARGS:
-          interpolate_missing: true
-          autodetect_num_peaks: true
-          autodetect_num_peaks_min: 1
-          autodetect_num_peaks_max: 12
-          interpolate_missing: true
+      SIGNAL_EXTRACTOR:
+        class_path: 'src.model.signal_extractor.SignalExtractor'
+        KWARGS: {}
 
       PERSPECTIVE_DETECTOR:
         class_path: 'src.model.perspective_detector.PerspectiveDetector'
@@ -23,7 +18,7 @@ MODEL:
 
       SEGMENTATION_MODEL:
         class_path: 'src.model.unet.UNet'
-        weight_path: 'sandbox/weights_25.pt'
+        weight_path: '/weights/Electrocardiogram-Digitization/unet_weights_26062025.pt'
         KWARGS:
           num_in_channels: 3
           num_out_channels: 4
@@ -40,8 +35,6 @@ MODEL:
         class_path: 'src.model.pixel_size_finder.PixelSizeFinder'
         KWARGS: {}
 
-<<<<<<< HEAD
-=======
       LAYOUT_IDENTIFIER:
         class_path: 'src.model.lead_identifier.LeadIdentifier'
         config_path: 'src/config/lead_layouts_reduced.yml'
@@ -51,17 +44,12 @@ MODEL:
           device: 'cuda'
           debug: false
 
->>>>>>> f3e6f32 (fixup config inference warpper)
     device: 'cuda:0'
     resample_size: 2500
     rotate_on_resample: true
-    profile: true
+    enable_timing: true
 
 DATA:
   images_path: '/dataset/pmcardio_ecg_image_dataset/visual_data/'
-<<<<<<< HEAD
-  image_extensions: ['.png', '.jpg', 'jpeg']
-=======
   image_extensions: ['.png', '.jpg', '.jpeg', '.JPG']
->>>>>>> f3e6f32 (fixup config inference warpper)
   output_path: 'sandbox/inference_output'
