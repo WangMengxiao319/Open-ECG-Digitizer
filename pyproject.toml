@@ -13,6 +13,9 @@ prerelease = false
 [tool.black]
 line-length = 120
 
+[tool.isort]
+profile="black"
+
 [tool.mypy]
 strict = true
 
