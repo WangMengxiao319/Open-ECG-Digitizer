@@ -2,6 +2,52 @@
 
 <!-- version list -->
 
+## v1.5.0 (2025-07-01)
+
+### Bug Fixes
+
+- Ensure no crash if dewarping gets singular matrix
+  ([`a102dd5`](https://github.com/Ahus-AIM/Electrocardiogram-Digitization/commit/a102dd57d865c6334d6bed690efab467f54314bd))
+
+### Chores
+
+- Add formatting, linting, and type-check script
+  ([`34b4f16`](https://github.com/Ahus-AIM/Electrocardiogram-Digitization/commit/34b4f168ddb4a170d37bfd0e1484e4060886a03f))
+
+- Ensure isort compatible with black
+  ([`dba11d2`](https://github.com/Ahus-AIM/Electrocardiogram-Digitization/commit/dba11d279223027c0eb9f35c9c3369ee09446417))
+
+- Update requirements.txt
+  ([`75709f4`](https://github.com/Ahus-AIM/Electrocardiogram-Digitization/commit/75709f40d9116948a62b2f24e6a8f5c942e2df79))
+
+### Continuous Integration
+
+- Update typecheck job to auto-install missing type stubs
+  ([`ca89c5c`](https://github.com/Ahus-AIM/Electrocardiogram-Digitization/commit/ca89c5cae8f3150cc48a641914ea44e971869b3e))
+
+### Features
+
+- Add argparsing for config path and enable tensor arguments to loss_fn
+  ([`63b5e34`](https://github.com/Ahus-AIM/Electrocardiogram-Digitization/commit/63b5e34a142cbe4ae538b623a19e7faa559e3698))
+
+- Add lead identification
+  ([`f77c9ec`](https://github.com/Ahus-AIM/Electrocardiogram-Digitization/commit/f77c9ec9ae338d8b8090ec87a26cdf6ec8e572aa))
+
+- Add signal extraction class
+  ([`9d3a49f`](https://github.com/Ahus-AIM/Electrocardiogram-Digitization/commit/9d3a49feeed6198ed36fa4e403a3985684040b54))
+
+- Support lead identification
+  ([`484410c`](https://github.com/Ahus-AIM/Electrocardiogram-Digitization/commit/484410c030c246a92027de0e55cc1a8d95c59263))
+
+- Update config files with for lead detection support
+  ([`c000e39`](https://github.com/Ahus-AIM/Electrocardiogram-Digitization/commit/c000e39ac0728fcbc57388f6f48d65bd7a349584))
+
+### Refactoring
+
+- Remove unused snake class
+  ([`47286cf`](https://github.com/Ahus-AIM/Electrocardiogram-Digitization/commit/47286cf71f5f323254671a9315f1955cdfdd6579))
+
+
 ## v1.4.0 (2025-06-25)
 
 ### Bug Fixes
