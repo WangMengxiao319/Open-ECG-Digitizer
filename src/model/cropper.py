@@ -5,17 +5,21 @@ from torchvision.transforms.functional import perspective
 
 
 class Cropper(torch.nn.Module):
-    def __init__(self, granularity: int = 50, percentiles: Tuple[float, float] = (0.01, 0.99)):
+    def __init__(
+        self, granularity: int = 50, percentiles: Tuple[float, float] = (0.01, 0.99), alpha: float = 0.9
+    ) -> None:
         """
         The Cropper module is used to correct for perspective distortion in images, while also cropping the image to mostly include the signal.
 
         Args:
             granularity (int): The number of lines defining the bins in the horizontal and vertical directions.
             percentiles (Tuple[float, float]): The percentiles defining the range of signal probabilities that should be included in the output
+            alpha (float): A factor to control the influence of the source points on the destination points in the perspective transformation.
         """
         super(Cropper, self).__init__()
         self.granularity = granularity
         self.percentiles = percentiles
+        self.alpha = alpha
 
     def forward(self, signal_probabilities: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
         """
@@ -285,9 +289,7 @@ class Cropper(torch.nn.Module):
 
         return aspect
 
-    def _calculate_destination_points(
-        self, H: int, W: int, source_points: torch.Tensor, alpha: float = 0.9
-    ) -> torch.Tensor:
+    def _calculate_destination_points(self, H: int, W: int, source_points: torch.Tensor) -> torch.Tensor:
         aspect_ratio_source = self._get_approximate_aspect_ratio(source_points)
 
         if W < aspect_ratio_source * H:
@@ -314,4 +316,6 @@ class Cropper(torch.nn.Module):
             [W / 2, H / 2],
         ]
 
-        return alpha * torch.tensor(destination_points) + (1 - alpha) * torch.tensor(default_destination_points)
+        return self.alpha * torch.tensor(destination_points) + (1 - self.alpha) * torch.tensor(
+            default_destination_points
+        )

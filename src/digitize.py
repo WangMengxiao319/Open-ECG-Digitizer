@@ -1,24 +1,24 @@
+import argparse
 import os
 import random
-from collections.abc import Iterable
+from typing import Any
 
 import matplotlib.pyplot as plt
 import numpy as np
+import numpy.typing as npt
 import torch
 from torchvision.io import decode_image
 from tqdm import tqdm
 from yacs.config import CfgNode as CN
 
 from src.config.default import get_cfg
-from src.utils import import_class_from_path
+from src.utils import find_config_path, import_class_from_path
+
+LEAD_NAMES = ["I", "II", "III", "aVR", "aVL", "aVF", "V1", "V2", "V3", "V4", "V5", "V6"]
 
 
-def load_file_paths_with_structure(config: CN) -> Iterable[str]:
-    """
-    Loads file paths from the specified directory structure in the config.
-    Returns an iterable of file paths.
-    """
-    candidate_filenames = []
+def get_candidate_file_paths(config: CN) -> list[str]:
+    candidate_filenames: list[str] = []
     for root, _, files in os.walk(config.DATA.images_path):
         for file in files:
             if file.endswith(tuple(config.DATA.image_extensions)):
@@ -28,17 +28,28 @@ def load_file_paths_with_structure(config: CN) -> Iterable[str]:
     return candidate_filenames
 
 
+def clear_and_prepare_output_dir(config: CN) -> None:
+    output_path: str = config.DATA.output_path
+    if os.path.exists(output_path):
+        for root, dirs, files in os.walk(output_path, topdown=False):
+            for name in files:
+                os.remove(os.path.join(root, name))
+            for name in dirs:
+                os.rmdir(os.path.join(root, name))
+    if not os.path.exists(output_path):
+        os.makedirs(output_path)
+    copy_file_structure(config.DATA.images_path, output_path)
+
+
 def copy_file_structure(src: str, dst: str) -> None:
-    """
-    Copies only the directory structure (not files) from src to dst.
-    """
     for root, dirs, _ in os.walk(src):
-        rel_path = os.path.relpath(root, src)
-        target_dir = os.path.join(dst, rel_path)
+        rel_path: str = os.path.relpath(root, src)
+        target_dir: str = os.path.join(dst, rel_path)
         os.makedirs(target_dir, exist_ok=True)
 
 
-def adjust_image_shape(image: torch.Tensor) -> torch.Tensor:
+def decode_and_prepare_image(file_path: str) -> torch.Tensor:
+    image: torch.Tensor = decode_image(file_path, mode="RGB")
     C, H, W = image.shape
     if C == 1:
         image = image.expand(3, H, W)
@@ -47,82 +58,124 @@ def adjust_image_shape(image: torch.Tensor) -> torch.Tensor:
     return image.unsqueeze(0)
 
 
+def canonical_from_got_values(got_values: dict[str, Any]) -> torch.Tensor | None:
+    canonical: torch.Tensor | None = None
+    if "signal" in got_values and isinstance(got_values["signal"], dict):
+        canonical = got_values["signal"].get("canonical_lines")
+    elif "canonical_lines" in got_values:
+        canonical = got_values["canonical_lines"]
+    return canonical
+
+
+def save_timeseries_csv(canonical: torch.Tensor | None, output_basepath: str) -> None:
+    if canonical is None:
+        return
+    data: npt.NDArray[Any] = canonical.squeeze().cpu().numpy()
+    # Assume shape (n_leads, n_points)
+    if data.ndim == 1:
+        data = data[None, :]
+    n_leads = data.shape[0]
+    col_names = LEAD_NAMES[:n_leads]
+    # Transpose to shape (n_points, n_leads)
+    data = data.T
+    header = ",".join(col_names)
+    np.savetxt(output_basepath + "_timeseries_canonical.csv", data, delimiter=",", header=header, comments="")
+
+
+def save_png_plot(got_values: dict[str, Any], canonical: torch.Tensor | None, output_basepath: str) -> None:
+    fig, axs = plt.subplots(2, 2, figsize=(20, 14))
+    axs[0, 0].imshow(got_values["input_image"].squeeze().permute(1, 2, 0).cpu().numpy() * 0.999)
+    source_points = got_values["source_points"]
+    axs[0, 0].scatter(source_points[:, 0].cpu().numpy(), source_points[:, 1].cpu().numpy(), s=20, c="red")
+    axs[0, 1].imshow(got_values["aligned"]["image"].squeeze().permute(1, 2, 0).cpu().numpy() * 0.999)
+    axs[1, 0].imshow(got_values["aligned"]["signal_prob"].squeeze().cpu().numpy(), interpolation="none", vmin=0, vmax=1)
+    for i in range(0, 15, 2):
+        for j in range(0, 15, 2):
+            xval = i * 5 / got_values["pixel_spacing_mm"]["x"]
+            yval = j * 5 / got_values["pixel_spacing_mm"]["y"]
+            axs[0, 1].add_patch(
+                plt.Rectangle(  # type: ignore
+                    (xval, yval),
+                    width=5 / got_values["pixel_spacing_mm"]["x"],
+                    height=5 / got_values["pixel_spacing_mm"]["y"],
+                    edgecolor="red",
+                    facecolor="none",
+                )
+            )
+    if canonical is not None:
+        lines: npt.NDArray[Any] = canonical.squeeze().cpu().numpy()
+        lines -= np.linspace(0, 24_000, num=lines.shape[0])[:, None]  # 2 uV offset per lead
+        axs[1, 1].plot(lines.T, linewidth=0.5)
+    plt.tight_layout()
+    plt.suptitle(got_values.get("layout_name", ""), fontsize=16)
+    plt.savefig(output_basepath + ".png", dpi=200)
+    plt.close()
+
+
+def save_outputs(got_values: dict[str, Any], output_basepath: str, save_mode: str = "all") -> None:
+    canonical = canonical_from_got_values(got_values)
+    if save_mode in ["all", "timeseries_only"]:
+        save_timeseries_csv(canonical, output_basepath)
+    if save_mode in ["all", "png_only"]:
+        save_png_plot(got_values, canonical, output_basepath)
+
+
+def process_one_file(file_path: str, config: CN, inference_wrapper: Any, save_mode: str) -> None:
+    image = decode_and_prepare_image(file_path)
+    layout_should_include_substring: str | None = None
+    if config.DATA.get("layout_should_include_substring") is not None:
+        if "limb" in str(file_path):
+            layout_should_include_substring = "limb"
+        elif "precordial" in str(file_path):
+            layout_should_include_substring = "precordial"
+
+    got_values = inference_wrapper(image, layout_should_include_substring=layout_should_include_substring)
+
+    if config.DATA.get("output_path") is not None:
+        rel_path = os.path.relpath(file_path, config.DATA.images_path)
+        output_file_path = os.path.join(config.DATA.output_path, rel_path)
+        output_basepath = os.path.splitext(output_file_path)[0]
+        os.makedirs(os.path.dirname(output_basepath), exist_ok=True)
+        save_outputs(got_values, output_basepath, save_mode)
+
+
 def main(config: CN) -> None:
     inference_wrapper_class = import_class_from_path(config.MODEL.class_path)
     inference_wrapper = inference_wrapper_class(**config.MODEL.KWARGS)
+    save_mode: str = getattr(config.DATA, "save_mode", "all")
+    file_paths: list[str] = get_candidate_file_paths(config)
 
-    loading_bar = tqdm(load_file_paths_with_structure(config))
+    include_list = config.DATA.get("path_should_include", [])
+
     if config.DATA.get("output_path") is not None:
-        if os.path.exists(config.DATA.output_path):
-            for root, dirs, files in os.walk(config.DATA.output_path, topdown=False):
-                for name in files:
-                    os.remove(os.path.join(root, name))
-                for name in dirs:
-                    os.rmdir(os.path.join(root, name))
-        if not os.path.exists(config.DATA.output_path):
-            os.makedirs(config.DATA.output_path)
-        copy_file_structure(config.DATA.images_path, config.DATA.output_path)
+        clear_and_prepare_output_dir(config)
 
-    for file_path in loading_bar:
-        if "photos" not in file_path:
+    for file_path in tqdm(file_paths):
+        should_be_included = not bool(include_list)
+        for include in include_list:
+            if include in file_path:
+                should_be_included = True
+        if not should_be_included:
             continue
-        # if "highlighted" in file_path:
-        #     continue
-        image = decode_image(file_path, mode="RGB")
-        image = adjust_image_shape(image)
-        got_values = inference_wrapper(image)
-
-        if config.DATA.get("output_path") is not None:
-            # Compute relative path
-            rel_path = os.path.relpath(file_path, config.DATA.images_path)
-            output_file_path = os.path.join(config.DATA.output_path, rel_path)
-
-            # Plot and save output
-            fig, axs = plt.subplots(2, 2, figsize=(20, 14))
-            axs[0, 0].imshow(got_values["image"].squeeze().permute(1, 2, 0).cpu().numpy())
-            # axs[0, 0].imshow(got_values["text_probabilities_aligned"].squeeze().cpu().numpy())
-            source_points = got_values["source_points"]
-            axs[0, 0].scatter(source_points[:, 0].cpu().numpy(), source_points[:, 1].cpu().numpy(), s=20, c="red")
-            axs[0, 1].imshow(got_values["image_aligned"].squeeze().permute(1, 2, 0).cpu().numpy())
-            axs[1, 0].imshow(
-                got_values["signal_probabilities_aligned"].squeeze().cpu().numpy(), interpolation="none", vmin=0, vmax=1
-            )
-            # axs[1, 1].plot(got_values["signal"].cpu().numpy().T)
-            if got_values.get("canonical_lines", None) is not None:
-                lines = got_values["canonical_lines"].cpu().numpy()
-                lines += np.linspace(0, 24, num=lines.shape[0])[:, None]
-                axs[1, 1].plot(lines.T, alpha=0.5)
-            axs[1, 1].invert_yaxis()
-            plt.tight_layout()
-
-            if got_values.get("canonical_lines", None) is not None:
-                ofp = os.path.splitext(output_file_path)[0] + "_timeseries_canonical.npy"
-                os.makedirs(os.path.dirname(ofp), exist_ok=True)
-                timeseries_canonical = got_values["canonical_lines"].squeeze().cpu().numpy()
-                np.save(ofp, timeseries_canonical)
-
-            for i in range(0, 15, 2):
-                for j in range(0, 15, 2):
-                    axs[0, 1].add_patch(
-                        plt.Rectangle(  # type: ignore
-                            (i * 5 / got_values["mm_per_pixel_x"], j * 5 / got_values["mm_per_pixel_y"]),
-                            width=5 / got_values["mm_per_pixel_x"],
-                            height=5 / got_values["mm_per_pixel_y"],
-                            edgecolor="red",
-                            facecolor="none",
-                        )
-                    )
-
-            # set got values layout as title
-            title = got_values["layout"]
-            plt.suptitle(title, fontsize=16)
-
-            # Change file extension to .png for saving
-            output_file_path = os.path.splitext(output_file_path)[0] + ".png"
-            plt.savefig(output_file_path, dpi=150)
-            plt.close()
+        print(f"Processing file: {file_path}")
+        try:
+            process_one_file(file_path, config, inference_wrapper, save_mode)
+        except Exception as e:
+            print(f"Error processing {file_path}: {e}")
+            continue
 
 
 if __name__ == "__main__":
-    cfg = get_cfg("src/config/inference_wrapper.yml")
+    parser = argparse.ArgumentParser(description="Digitize ECGs and save output.")
+    parser.add_argument(
+        "--config",
+        type=str,
+        default="inference_wrapper.yml",
+        help="Config file name or path (searched in . and src/config/). Default: inference_wrapper.yml",
+    )
+    args = parser.parse_args()
+
+    config_path = find_config_path(args.config)
+    cfg = get_cfg(config_path)
+
     main(cfg)

@@ -30,7 +30,6 @@ MODEL:
         KWARGS:
           granularity: 80
           percentiles: [0.02, 0.98]
-          alpha: 0.85
 
       PIXEL_SIZE_FINDER:
         class_path: 'src.model.pixel_size_finder.PixelSizeFinder'
@@ -46,18 +45,17 @@ MODEL:
         unet_weight_path: '/weights/Electrocardiogram-Digitization/lead_name_unet_weights_07072025.pt'
         KWARGS:
           debug: false
-          device: 'cuda'
+          device: 'cuda:1'
           possibly_flipped: false
 
-    device: 'cuda'
+    device: 'cuda:1'
     resample_size: 3000
     rotate_on_resample: true
     enable_timing: false
     apply_dewarping: false
 
 DATA:
-  images_path: '/dataset/ecg-digitization/images_and_scans_with_csvs_labeled_2/'
+  images_path: '/dataset/ecg-digitization/images_and_scans_with_csvs/'
   image_extensions: ['.png', '.jpg', '.jpeg', '.JPG']
   output_path: 'sandbox/inference_output'
   save_mode: 'all'
-  layout_should_include_substring: true # setting this to true will restrict layouts with "limb" or "precordial" in their names, based on filenames

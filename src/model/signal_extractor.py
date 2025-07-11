@@ -30,7 +30,7 @@ class SignalExtractor:
         max_iterations: int = 4,
         split_num_stripes: int = 4,
         candidate_span: int = 10,
-        debug: int = 1,
+        debug: int = 0,
         lam: float = 0.5,
         min_line_width: int = 30,
     ) -> None:
@@ -50,8 +50,12 @@ class SignalExtractor:
         lines_list = self._iterative_extraction(fmap)
         self.num_peaks = self._autodetect_num_peaks(fmap)
         lines_list = [ln for ln in lines_list if (~torch.isnan(ln)).sum() > self.min_line_width]
+        if len(lines_list) == 0:
+            return torch.empty((0, feature_map.shape[1]), dtype=torch.float32)
         lines = torch.stack(lines_list, dim=0)
         merged_lines_list, overlaps = self.match_and_merge_lines(lines)
+        if len(merged_lines_list) == 0:
+            return torch.empty((0, feature_map.shape[1]), dtype=torch.float32)
         merged_lines = torch.stack(merged_lines_list, dim=0)
         if self.num_peaks != len(merged_lines):
             print(
@@ -272,6 +276,8 @@ class SignalExtractor:
 
     def build_match_graph(self, row_ind: npt.NDArray[Any], col_ind: npt.NDArray[Any]) -> dict[int, list[int]]:
         graph: dict[int, list[int]] = defaultdict(list)
+        row_ind = np.atleast_1d(row_ind)
+        col_ind = np.atleast_1d(col_ind)
         for i, j in zip(row_ind, col_ind):
             graph[i].append(j)
             graph[j].append(i)
@@ -344,7 +350,7 @@ class SignalExtractor:
 
     def match_and_merge_lines(self, lines: torch.Tensor) -> tuple[list[torch.Tensor], list[float]]:
         lines = self.preprocess_lines(lines)
-        if self.debug > 0:
+        if self.debug:
             self.plot_lines(lines, "Preprocessed Lines")
         min_coords, max_coords, heights, W = self.extract_graph_params(lines)
         cost_matrix, wrapped_mask = self.compute_cost_matrix(min_coords, max_coords, W, heights)
@@ -360,7 +366,7 @@ class SignalExtractor:
         merged_lines, overlaps = self.merge_components(lines, components)
         filtered_lines = [line for line in merged_lines if torch.sum(~torch.isnan(line)) >= W // 5]
 
-        if self.debug > 0:
+        if self.debug:
             self.plot_graph(min_coords, max_coords, row_ind, col_ind)
 
         return filtered_lines, overlaps

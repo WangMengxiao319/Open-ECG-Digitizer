@@ -38,6 +38,7 @@ class InferenceWrapper(Module):
         rotate_on_resample: bool = False,
         enable_timing: bool = False,
         minimum_image_size: int = 512,
+        apply_dewarping: bool = True,
     ) -> None:
         """Inference wrapper for ECG pipeline.
 
@@ -52,6 +53,7 @@ class InferenceWrapper(Module):
             rotate_on_resample: Whether to rotate on resample.
             enable_timing: Whether to print timings.
             minimum_image_size: Minimum allowed image size.
+            apply_dewarping: Whether to apply dewarping (perspective correction is still performed regardless).
         """
         super().__init__()
         self.config = config
@@ -64,6 +66,7 @@ class InferenceWrapper(Module):
         self.rotate_on_resample = rotate_on_resample
         self._timing_enabled = enable_timing
         self.minimum_image_size = minimum_image_size
+        self.apply_dewarping = apply_dewarping
 
         self.signal_extractor = self._load_signal_extractor()
         self.perspective_detector: Any = self._load_perspective_detector()
@@ -75,11 +78,14 @@ class InferenceWrapper(Module):
         self.times: dict[str, float] = {}
 
     @torch.no_grad()
-    def forward(self, image: Tensor) -> dict[str, Tensor | str | float | None]:
+    def forward(
+        self, image: Tensor, layout_should_include_substring: None | str
+    ) -> dict[str, Tensor | str | float | None | dict[str, Any]]:
         """Performs full inference on an input image.
 
         Args:
             image: Input image tensor.
+            layout_should_include_substring: Optional substring to filter layout names.
 
         Returns:
             Dictionary with processed outputs and intermediate results.
@@ -105,35 +111,49 @@ class InferenceWrapper(Module):
 
         with timed_section("Pixel size search", self.times):
             mm_per_pixel_x, mm_per_pixel_y = self.pixel_size_finder(aligned_grid_prob)
+            avg_pixel_per_mm = (1 / mm_per_pixel_x + 1 / mm_per_pixel_y) / 2
 
         with timed_section("Dewarping", self.times):
-            avg_pixel_per_mm = (1 / mm_per_pixel_x + 1 / mm_per_pixel_y) / 2
-            self.dewarper.fit(aligned_grid_prob.squeeze(), avg_pixel_per_mm)
-            aligned_signal_prob = self.dewarper.transform(aligned_signal_prob.squeeze())
+            if self.apply_dewarping:
+                self.dewarper.fit(aligned_grid_prob.squeeze(), avg_pixel_per_mm)
+                aligned_signal_prob = self.dewarper.transform(aligned_signal_prob.squeeze())
 
         with timed_section("Signal extraction", self.times):
             signals = self.signal_extractor(aligned_signal_prob.squeeze())
 
         self._print_profiling_results()
 
-        layout = self.identifier(signals, aligned_text_prob, avg_pixel_per_mm, threshold=0.75)
+        layout = self.identifier(
+            signals,
+            aligned_text_prob,
+            avg_pixel_per_mm,
+            layout_should_include_substring=layout_should_include_substring,
+        )
         try:
             layout_str = layout["layout"] + " flipped: " + str(layout["flip"])
         except KeyError:
             layout_str = "Unknown layout"
 
         return {
-            "layout": layout_str,
-            "image": image.cpu(),
-            "image_aligned": aligned_image.cpu(),
-            "signal_probabilities_aligned": aligned_signal_prob.cpu(),
-            "grid_probabilities_aligned": aligned_grid_prob.cpu(),
-            "signal": signals.cpu(),
-            "text_probabilities_aligned": aligned_text_prob.cpu(),
-            "mm_per_pixel_x": mm_per_pixel_x,
-            "mm_per_pixel_y": mm_per_pixel_y,
+            "layout_name": layout_str,
+            "input_image": image.cpu(),
+            "aligned": {
+                "image": aligned_image.cpu(),
+                "signal_prob": aligned_signal_prob.cpu(),
+                "grid_prob": aligned_grid_prob.cpu(),
+                "text_prob": aligned_text_prob.cpu(),
+            },
+            "signal": {
+                "raw_lines": signals.cpu(),
+                "canonical_lines": layout.get("canonical_lines", None),
+                "lines": layout.get("lines", None),
+            },
+            "pixel_spacing_mm": {
+                "x": mm_per_pixel_x,
+                "y": mm_per_pixel_y,
+                "average_pixel_per_mm": avg_pixel_per_mm,
+            },
             "source_points": source_points.cpu(),
-            "canonical_lines": layout.get("canonical_lines", None),
         }
 
     def _align_feature_maps(
@@ -179,24 +199,25 @@ class InferenceWrapper(Module):
                 min=0,
             )
             non_zero = (prob > 0).nonzero(as_tuple=True)[0]
+            if non_zero.numel() == 0:
+                return 0, tensor.shape[2] - 1
             return int(non_zero[0].item()), int(non_zero[-1].item())
 
         y1, y2 = get_bounds(signal_prob + grid_prob)
-        x1, x2 = get_bounds((signal_prob + grid_prob).transpose(-2, -1))
 
-        slices = (slice(None), slice(None), slice(y1, y2 + 1), slice(x1, x2 + 1))
+        slices = (slice(None), slice(None), slice(y1, y2 + 1), slice(None))
         return image[slices], signal_prob[slices], grid_prob[slices], text_prob[slices]
 
     def _print_profiling_results(self) -> None:
         """Prints the timings for each timed section."""
         if not self._timing_enabled:
             return
-        print("Profiling times")
+        print(" Timing results:")
         max_length = max(len(section) for section in self.times.keys())
         for section, duration in self.times.items():
-            print(f"    {section:<{max_length+2}}{duration:.2f}s")
+            print(f"    {section:<{max_length+2}}{duration:.2f} s")
         total_time = sum(self.times.values())
-        print(f"Total time: {total_time:.2f}s")
+        print(f"Total time: {total_time:.2f} s")
 
     def _rotate_on_resample(
         self,
@@ -211,10 +232,10 @@ class InferenceWrapper(Module):
             Rotated tensors in same order.
         """
         if aligned_image.shape[2] > aligned_image.shape[3]:
-            aligned_image = torch.rot90(aligned_image, k=1, dims=(2, 3))
-            aligned_signal_prob = torch.rot90(aligned_signal_prob, k=1, dims=(2, 3))
-            aligned_grid_prob = torch.rot90(aligned_grid_prob, k=1, dims=(2, 3))
-            aligned_text_prob = torch.rot90(aligned_text_prob, k=1, dims=(2, 3))
+            aligned_image = torch.rot90(aligned_image, k=3, dims=(2, 3))
+            aligned_signal_prob = torch.rot90(aligned_signal_prob, k=3, dims=(2, 3))
+            aligned_grid_prob = torch.rot90(aligned_grid_prob, k=3, dims=(2, 3))
+            aligned_text_prob = torch.rot90(aligned_text_prob, k=3, dims=(2, 3))
         return aligned_image, aligned_signal_prob, aligned_grid_prob, aligned_text_prob
 
     def _resample_image(self, image: Tensor) -> Tensor:
@@ -303,23 +324,10 @@ class InferenceWrapper(Module):
         return dewarper
 
     def _load_layout_identifier(self) -> Any:
-        # with open(config_path, "r") as f:
-        #     self.layouts: dict[str, Any] = yaml.safe_load(f)
-        # with open(unet_config_path, "r") as f:
-        #     unet_config: dict[str, Any] = yaml.safe_load(f)
-        # unet_class_path: str = unet_config["MODEL"]["class_path"]
-        # unet_kwargs: dict[str, Any] = unet_config["MODEL"]["KWARGS"]
-        # self.unet = import_class_from_path(unet_class_path)(**unet_kwargs).to(device)
-        # checkpoint: dict[str, torch.Tensor] = torch.load(unet_weight_path, map_location=device)
-        # checkpoint = {k.replace("_orig_mod.", ""): v for k, v in checkpoint.items()}
-        # self.unet.load_state_dict(checkpoint)
-        # self.device: torch.device = device
-        # self.debug: bool = debug
-
         layouts = yaml.safe_load(open(self.config.LAYOUT_IDENTIFIER.config_path, "r"))
         unet_cfg = yaml.safe_load(open(self.config.LAYOUT_IDENTIFIER.unet_config_path, "r"))
-        unet_cls = import_class_from_path(unet_cfg["MODEL"]["class_path"])
-        unet: torch.nn.Module = unet_cls(**unet_cfg["MODEL"]["KWARGS"])
+        unet_class = import_class_from_path(unet_cfg["MODEL"]["class_path"])
+        unet: torch.nn.Module = unet_class(**unet_cfg["MODEL"]["KWARGS"])
         checkpoint = torch.load(self.config.LAYOUT_IDENTIFIER.unet_weight_path, map_location=self.device)
         checkpoint = {k.replace("_orig_mod.", ""): v for k, v in checkpoint.items()}
         unet.load_state_dict(checkpoint)

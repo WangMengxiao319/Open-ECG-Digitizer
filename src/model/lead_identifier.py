@@ -16,29 +16,27 @@ class LeadIdentifier:
         layouts: dict[str, Any],
         unet: torch.nn.Module,
         device: torch.device,
+        possibly_flipped: bool = True,
+        target_num_samples: int = 5000,
         debug: bool = False,
     ) -> None:
         """
         Args:
-            layouts: dict mapping layout names → layout definitions.
+            layouts: dict mapping layout names to layout definitions.
             unet: a loaded and weight-initialized UNet model (in eval mode).
             device: device where inference will run.
+            possibly_flipped: whether to check for flipped layouts (caused by upside-down images)
+            target_num_samples: number of samples (seconds*sample rate) that the output should contain.
             debug: whether to draw scatter/plots.
         """
         self.layouts = layouts
         self.unet = unet.to(device).eval()
         self.device = device
+        self.possibly_flipped = possibly_flipped
+        self.target_num_samples = target_num_samples
         self.debug = debug
 
     def _merge_nonoverlapping_lines(self, lines: torch.Tensor) -> torch.Tensor:
-        """Merges adjacent non-overlapping lines.
-
-        Args:
-            lines: Input tensor of lines.
-
-        Returns:
-            Tensor with merged lines.
-        """
         if lines.shape[0] > 1:
             means: torch.Tensor = torch.nanmean(lines, dim=1)
             sorted_indices: torch.Tensor = torch.argsort(means)
@@ -54,7 +52,6 @@ class LeadIdentifier:
                     row2 = lines[i + 1]
                     overlap = ~(torch.isnan(row1) | torch.isnan(row2))
                     if not torch.any(overlap):
-                        # Merge: prefer values from row1 where not nan, else row2
                         merged = torch.where(torch.isnan(row1), row2, row1)
                         new_lines.append(merged)
                         i += 2
@@ -66,15 +63,6 @@ class LeadIdentifier:
         return lines
 
     def _nan_cossim(self, x: torch.Tensor, y: torch.Tensor) -> float:
-        """Calculates cosine similarity, ignoring NaNs.
-
-        Args:
-            x: First tensor.
-            y: Second tensor.
-
-        Returns:
-            Cosine similarity as float.
-        """
         x_values: torch.Tensor = x[~torch.isnan(x)]
         y_values: torch.Tensor = y[~torch.isnan(y)]
         if x_values.numel() <= 1 or y.numel() <= 1:
@@ -118,7 +106,11 @@ class LeadIdentifier:
 
         if flip:
             lines = torch.flip(lines, dims=[0, 1])
-            lines_max_val = lines[~torch.isnan(lines)].max()
+            valid_lines = lines[~torch.isnan(lines)]
+            if valid_lines.numel() > 0:
+                lines_max_val = valid_lines.max()
+            else:
+                lines_max_val = 1.0  # type: ignore
             lines = lines_max_val - lines
 
         lead_names: list[str] = []
@@ -131,7 +123,6 @@ class LeadIdentifier:
 
         used_indices: set[tuple[int, int, int]] = set()
 
-        # Use the layout that we have matched, to fill a "canonical" tensor, in which the leads are always ordered as self.LEAD_CHANNEL_ORDER.
         chunk_width: int = width // cols
         for row_idx, layout_row in enumerate(leads_def):
             if not isinstance(layout_row, list):
@@ -140,7 +131,7 @@ class LeadIdentifier:
                 start: int = col_idx * chunk_width
                 end: int = (col_idx + 1) * chunk_width if col_idx < cols - 1 else width
                 if row_idx >= lines.shape[0]:
-                    continue  # Incomplete
+                    continue
                 chunk: torch.Tensor = lines[row_idx, start:end]
                 sign: int = 1
                 lead_name: str = layout_lead
@@ -173,27 +164,21 @@ class LeadIdentifier:
                 rhythm_corrs[:, 1] = self._inflate_cossim(rhythm_corrs[:, 1])
                 rhythm_corrs[:, 6] = self._inflate_cossim(rhythm_corrs[:, 6])
                 rhythm_corrs[:, 10] = self._inflate_cossim(rhythm_corrs[:, 10])
-
-            row_idx, col_idx = linear_sum_assignment(-rhythm_corrs)
-            for i_r, i_c in zip(row_idx, col_idx):
-                corr_val: float = rhythm_corrs[i_r, i_c]
-                print(f"Rhythm {i_r} → Canonical {canonical_order[i_c]} (corr={corr_val:.2f})")
-                canonical[i_c, :] = lines[-num_rhythm_leads + i_r, :]
+            try:
+                row_idx, col_idx = linear_sum_assignment(-rhythm_corrs)
+                for i_r, i_c in zip(row_idx, col_idx):
+                    corr_val: float = rhythm_corrs[i_r, i_c]
+                    print(f"Rhythm {i_r} → Canonical {canonical_order[i_c]} (corr={corr_val:.2f})")
+                    canonical[i_c, :] = lines[-num_rhythm_leads + i_r, :]
+            except ValueError:
+                if self.debug:
+                    print("Linear sum assignment failed, possibly due to NaN values in rhythm correlations.")
 
         return canonical
 
     def _inflate_cossim(
         self, lead: Union[float, NDArray[Any], torch.Tensor], factor: float = 0.75
     ) -> Union[float, NDArray[Any], torch.Tensor]:
-        """Inflates cosine similarity by a given factor.
-
-        Args:
-            lead: Cosine similarity value(s).
-            factor: Scaling factor.
-
-        Returns:
-            Inflated value(s).
-        """
         return 1 - factor + factor * lead
 
     def _generate_grid_positions(self, layout_def: dict[str, Any]) -> dict[str, NDArray[np.float64]]:
@@ -236,15 +221,6 @@ class LeadIdentifier:
     def _extract_lead_points(
         self, probs_tensor: torch.Tensor, lead_names: Optional[list[str]] = None
     ) -> list[tuple[str, float, float]]:
-        """Extracts center-of-mass points for each lead.
-
-        Args:
-            probs_tensor: Probability tensor from UNet.
-            lead_names: List of lead names.
-
-        Returns:
-            List of (lead name, x, y) tuples.
-        """
         if lead_names is None:
             lead_names = self.LEAD_CHANNEL_ORDER
         _, C, H, W = probs_tensor.shape
@@ -254,50 +230,69 @@ class LeadIdentifier:
             channel: NDArray[Any] = arr[i]
             if np.sum(channel) == 0:
                 continue
-            x_fmap: NDArray[Any] = np.arange(W).reshape(1, W).repeat(H, axis=0)
-            y_fmap: NDArray[Any] = np.arange(H).reshape(H, 1).repeat(W, axis=1)
+            x_fmap: NDArray[np.float64] = np.arange(W).reshape(1, W).repeat(H, axis=0).astype(np.float64)
+            y_fmap: NDArray[np.float64] = np.arange(H).reshape(H, 1).repeat(W, axis=1).astype(np.float64)
             x_com: float = float(np.sum(x_fmap * channel) / np.sum(channel))
             y_com: float = float(np.sum(y_fmap * channel) / np.sum(channel))
             pts.append((name, x_com, y_com))
         return pts
 
-    def _match_layout(self, detected_pts: list[tuple[str, float, float]], rows_in_layout: int) -> dict[str, Any]:
-        """Finds the best matching layout for detected lead points.
+    def _check_cabrera_limb(self, ts: NDArray[np.float64]) -> tuple[float, float]:
+        B = np.array(
+            [
+                [1, -0.5],  # aVL = I - 0.5 II
+                [1, 0],  # I
+                [0.5, 0.5],  # -aVR = 0.5 I + 0.5 II
+                [0, 1],  # II
+                [-0.5, 1],  # aVF = -0.5 I + II
+                [-1, 1],  # III = -I + II
+            ]
+        )
+        A = np.linalg.pinv(B)
 
-        Args:
-            detected_pts: List of detected (lead, x, y) tuples.
-            rows_in_layout: Number of rows in the layout.
+        compressed_ts = ts.T @ B  # shape (channels, 6)
+        reconstructed_ts = (compressed_ts @ A).T  # shape (6, time)
+        cossim = self._nan_cossim(
+            torch.from_numpy(reconstructed_ts.flatten()).float(), torch.from_numpy(ts.flatten()).float()
+        )
 
-        Returns:
-            Dict with match information.
-        """
-        names: tuple[str, ...]
-        xs: tuple[float, ...]
-        ys: tuple[float, ...]
+        flipped_ts = np.flip(np.flip(ts, axis=0), axis=1)
+        flipped_compressed_ts = flipped_ts.T @ B
+        flipped_reconstructed_ts = (flipped_compressed_ts @ A).T
+        flipped_cossim = self._nan_cossim(
+            torch.from_numpy(flipped_reconstructed_ts.flatten()).float(), torch.from_numpy(flipped_ts.flatten()).float()
+        )
+
+        return cossim, flipped_cossim
+
+    def _match_layout(
+        self,
+        detected_pts: list[tuple[str, float, float]],
+        rows_in_layout: int,
+        layouts: dict[str, Any],
+        check_flipped: bool,
+    ) -> dict[str, Any]:
         names, xs, ys = zip(*detected_pts)
         pts: NDArray[np.float64] = np.stack([xs, ys], axis=1)
         n: int = pts.shape[0]
         best: dict[str, Any] = {"cost": np.inf}
 
-        # Loop through each predefined possible layout, and calculate how fitting each of them is.
-        for layout_name, desc in self.layouts.items():
+        for layout_name, desc in layouts.items():
             total_rows: int = desc["total_rows"]
             rows_difference: int = abs(total_rows - rows_in_layout)
-            if rows_difference > 1:
-                continue
 
             pos_map: dict[str, NDArray[np.float64]] = self._generate_grid_positions(desc)
             grid_leads: list[str] = list(pos_map.keys())
             grid_pts: NDArray[np.float64] = np.stack([pos_map[lead] for lead in grid_leads])
-            scaling_factor: float = max(len(grid_leads), n) / min(len(grid_leads), n) * (1 + rows_difference * 3)
 
-            for flip in (False, True):
+            flip_options = (False, True) if check_flipped else (False,)
+
+            for flip in flip_options:
+                scaling_factor: float = max(len(grid_leads), n) / min(len(grid_leads), n) * (1 + rows_difference * 3)
                 P: NDArray[np.float64] = pts.copy()
                 if flip:
                     P = -P
 
-                # This first part aims at scaling the coordinates to find the best match, as
-                # we do not a priori know where the leads are in the image.
                 Pm: list[NDArray[np.float64]] = []
                 Gm: list[NDArray[np.float64]] = []
                 idxs: list[tuple[int, int]] = []
@@ -325,12 +320,11 @@ class LeadIdentifier:
                     s: NDArray[np.float64] = num / den
                 s = np.where(np.isfinite(s), s, 0.0)
                 if np.any(s < 0):
-                    continue
+                    scaling_factor *= 2
                 s[s < 1e-4] = 1e-4
                 t: NDArray[np.float64] = mu_G - s * mu_P
                 P_scaled: NDArray[np.float64] = P * s + t
 
-                # After scaling the coordinates, we calculate the distances between the detected leads and the grid leads.
                 res: list[float] = []
                 for i, j in idxs:
                     res.append(float(np.linalg.norm(P_scaled[i] - grid_pts[j])))
@@ -345,7 +339,10 @@ class LeadIdentifier:
                     plt.scatter(P_scaled[:, 0], P_scaled[:, 1], c="red", label="Detected", s=60)
                     for ii, jj in idxs:
                         plt.plot(
-                            [P_scaled[ii, 0], grid_pts[jj, 0]], [P_scaled[ii, 1], grid_pts[jj, 1]], c="gray", alpha=0.5
+                            [P_scaled[ii, 0], grid_pts[jj, 0]],
+                            [P_scaled[ii, 1], grid_pts[jj, 1]],
+                            c="gray",
+                            alpha=0.5,
                         )
                         plt.text(P_scaled[ii, 0], P_scaled[ii, 1], names[ii], ha="right", va="bottom", fontsize=9)
                         plt.text(grid_pts[jj, 0], grid_pts[jj, 1], grid_leads[jj], ha="left", va="top", fontsize=9)
@@ -355,20 +352,59 @@ class LeadIdentifier:
                     plt.show()
         return best
 
+    def _interpolate_lines(self, lines: torch.Tensor, target_num_samples: int) -> torch.Tensor:
+        if lines.shape[1] == target_num_samples:
+            return lines
+
+        num_leads: int = lines.shape[0]
+
+        x: NDArray[np.floating] = np.linspace(0, 1, num=lines.shape[1])
+        x_new: NDArray[np.floating] = np.linspace(0, 1, num=target_num_samples)
+        interpolated_lines: list[torch.Tensor] = []
+        for i in range(num_leads):
+            lead_line: NDArray[np.float64] = lines[i].cpu().numpy()
+            interpolated_line: NDArray[np.float64] = np.interp(x_new, x, lead_line)
+            interpolated_lines.append(torch.tensor(interpolated_line, dtype=lines.dtype, device=lines.device))
+        if len(interpolated_lines) == 0:
+            return torch.empty((num_leads, target_num_samples), dtype=lines.dtype, device=lines.device)
+        return torch.stack(interpolated_lines)
+
     def normalize(self, lines: torch.Tensor, avg_pixel_per_mm: float, mv_per_mm: float) -> torch.Tensor:
-        """Normalizes lines from pixel to mV scale.
-
-        Args:
-            lines: Input tensor of lines.
-            avg_pixel_per_mm: Average pixel per mm.
-            mv_per_mm: mV per mm.
-
-        Returns:
-            Normalized tensor.
-        """
+        """Changes the units of the ECG signals from pixels to mV/mm."""
         lines = lines - lines.nanmean(dim=1, keepdim=True)
-        lines = lines * (mv_per_mm / avg_pixel_per_mm)  # convert from pixels to mV
+        lines = lines * (mv_per_mm / avg_pixel_per_mm) * 1000
+
+        non_nan_samples_per_column = torch.sum(~torch.isnan(lines), dim=0).numpy()
+        first_valid_index: int = int(np.argmax(non_nan_samples_per_column >= 3))
+        last_valid_index: int = int(np.argmax(non_nan_samples_per_column[::-1] >= 3))
+        last_valid_index = lines.shape[1] - last_valid_index - 1
+        if first_valid_index <= last_valid_index:
+            lines = lines[:, first_valid_index : last_valid_index + 1]
+
+        lines = self._interpolate_lines(lines, self.target_num_samples)
+
         return lines
+
+    def _restrict_cabrera_layouts_if_needed(
+        self, lines: torch.Tensor, layouts: dict[str, Any], possibly_flipped: bool
+    ) -> tuple[dict[str, Any], bool]:
+        should_check_flipped = possibly_flipped
+        if lines.shape[0] == 6:
+            cossim, cossim_flipped = self._check_cabrera_limb(lines.cpu().numpy())
+            max_cossim: float = max(cossim, cossim_flipped)
+            if max_cossim > 0.992:
+                layouts = {
+                    name: desc for name, desc in layouts.items() if "cabrera" in name.lower() and "limb" in name.lower()
+                }
+            elif max_cossim < 0.95:
+                layouts = {
+                    name: desc
+                    for name, desc in layouts.items()
+                    if "cabrera" not in name.lower() or "limb" not in name.lower()
+                }
+            if cossim_flipped == max_cossim:
+                should_check_flipped = True
+        return layouts, should_check_flipped
 
     def __call__(
         self,
@@ -377,41 +413,43 @@ class LeadIdentifier:
         avg_pixel_per_mm: float,
         threshold: float = 0.9,
         mv_per_mm: float = 0.1,
+        layout_should_include_substring: Optional[str] = None,
     ) -> dict[str, Any]:
-        """Detects layout, canonicalizes lines, and returns results.
-
-        Args:
-            lines: Input lines tensor.
-            feature_map: Image tensor for UNet.
-            avg_pixel_per_mm: Average pixel per mm.
-            threshold: UNet probability threshold.
-            mv_per_mm: mV per mm.
-
-        Returns:
-            Dictionary with layout match info and canonical lines.
-        """
         lines = self._merge_nonoverlapping_lines(lines)
+        lines = -self.normalize(lines, avg_pixel_per_mm, mv_per_mm)
+        layouts = self.layouts.copy()
+
+        if layout_should_include_substring is not None:
+            layouts = {
+                name: desc for name, desc in layouts.items() if layout_should_include_substring.lower() in name.lower()
+            }
+
+        # layouts, check_flipped = self._restrict_cabrera_layouts_if_needed(lines, layouts, self.possibly_flipped)
+
         rows_in_layout: int = lines.shape[0]
         self.unet.eval()
         with torch.no_grad():
             logits: torch.Tensor = self.unet(feature_map.to(self.device))  # [1,13,H,W]
             probs: torch.Tensor = torch.softmax(logits, dim=1)[:, :12]  # [1,12,H,W]
-            probs[:, 0] = (
-                0  # Ignore the position of the "I" lead as it is particularly prone to false positives ("I" looks like a vertical line).
-            )
+            probs[:, 0] = 0  # Ignore the position of the "I" lead as it is particularly prone to false positives.
         probs[probs < threshold] = 0
         detected: list[tuple[str, float, float]] = self._extract_lead_points(probs, self.LEAD_CHANNEL_ORDER)
         if len(detected) <= 2:
             match: dict[str, Any] = {"cost": float("inf")}
             canonical_lines: Optional[torch.Tensor] = None
         else:
-            match = self._match_layout(detected, rows_in_layout)
-            canonical_lines = self._canonicalize_lines(lines, match)
-            canonical_lines = self.normalize(canonical_lines, avg_pixel_per_mm, mv_per_mm)
+            match = self._match_layout(detected, rows_in_layout, layouts, self.possibly_flipped)
+
+        if "layout" not in match:
+            print(f"No matching layout found, defaulting to first layout: {list(layouts.keys())[0]}")
+            match["layout"] = list(layouts.keys())[0]
+
+        canonical_lines = self._canonicalize_lines(lines.clone(), match)
 
         return {
             "rows_in_layout": rows_in_layout,
             "n_detected": len(detected),
             **match,
             "canonical_lines": canonical_lines,
+            "lines": lines,
         }

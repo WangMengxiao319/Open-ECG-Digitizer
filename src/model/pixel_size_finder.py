@@ -70,7 +70,8 @@ class PixelSizeFinder(torch.nn.Module):
     def _find_pxls_between_horizontal_grid_lines(self, image: torch.Tensor) -> float:
         col_sum = image.sum(dim=-1)
         col_sum = col_sum.mean() - col_sum
-        autocorrelation = torch.fft.irfft(torch.fft.rfft(col_sum).abs())
+        window = torch.hann_window(col_sum.shape[-1], periodic=False).pow(0.5).to(col_sum.device)
+        autocorrelation = torch.fft.irfft(torch.fft.rfft(col_sum * window).abs())
 
         pxls_between_lines = self._zoom_grid_search_min_distance(autocorrelation)
 

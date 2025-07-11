@@ -92,7 +92,7 @@ def run_epoch(
                     loss.backward()
                     optimizer.step()  # type: ignore
 
-                if lr_scheduler:
+                if lr_scheduler and not eval:
                     lr_scheduler.step()
 
             total_loss += loss.item()

@@ -12,7 +12,7 @@ TRAIN:
   LR_SCHEDULER:
     class_path: 'src.utils.CosineToConstantLR'
     KWARGS:
-      T_max: 1000
+      T_max: 3000
       eta_min_divisor: 10
   STOPPER:
     class_path: 'src.utils.EarlyStopper'
@@ -23,7 +23,7 @@ TRAIN:
   OPTIMIZER:
     class_path: 'src.optimizer.adammuon.AdamMuon'
     KWARGS:
-      lr: 0.01
+      lr: 0.0037
       weight_decay: 0.001
   MIXED_PRECISION_SCALER:
     class_path: 'torch.amp.GradScaler'
@@ -33,7 +33,7 @@ TRAIN:
     KWARGS:
       weight: [0.08264463, 0.08264463, 0.08264463, 0.08264463, 0.08264463, 0.08264463, 0.08264463, 0.08264463, 0.08264463, 0.08264463, 0.08264463, 0.08264463, 0.00826446]
   KWARGS:
-    epochs: 10
+    epochs: 30
     metrics: []
     device: 'cuda'
 
