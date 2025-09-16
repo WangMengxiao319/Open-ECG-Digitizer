@@ -73,6 +73,7 @@ def compute_metrics(gt: npt.NDArray[Any], pred: npt.NDArray[Any], n_translations
         "rms": [],
         "snr_db": [],
         "shift": [],
+        "nans_fraction": [],
     }
     max_shift = n_translations // 2
     min_shift = -n_translations // 2
@@ -84,7 +85,7 @@ def compute_metrics(gt: npt.NDArray[Any], pred: npt.NDArray[Any], n_translations
 
     for lead in range(gt.shape[0]):
         best_snr = -np.inf
-        best_metrics = {"pearson": np.nan, "rms": np.nan, "snr_db": np.nan, "shift": 0}
+        best_metrics = {"pearson": np.nan, "rms": np.nan, "snr_db": np.nan, "shift": 0, "nans_fraction": 0.0}
         for shift in shifts:
             if shift == 0:
                 gt_aligned = gt[lead]
@@ -115,12 +116,19 @@ def compute_metrics(gt: npt.NDArray[Any], pred: npt.NDArray[Any], n_translations
 
             if best_snr < snr_db:
                 best_snr = snr_db
-                best_metrics = {"pearson": pearson, "rms": rms, "snr_db": snr_db, "shift": shift}
+                best_metrics = {
+                    "pearson": pearson,
+                    "rms": rms,
+                    "snr_db": snr_db,
+                    "shift": shift,
+                    "nans_fraction": np.mean(np.isnan(pred_shifted)),
+                }
 
         metrics["pearson"].append(best_metrics["pearson"])
         metrics["rms"].append(best_metrics["rms"])
         metrics["snr_db"].append(best_metrics["snr_db"])
         metrics["shift"].append(best_metrics["shift"])
+        metrics["nans_fraction"].append(best_metrics["nans_fraction"])
 
     return metrics
 
@@ -156,6 +164,7 @@ def main(cfg: CN) -> None:
                 **{f"rms_{i+1}": v for i, v in enumerate(metrics["rms"])},
                 **{f"snr_db_{i+1}": v for i, v in enumerate(metrics["snr_db"])},
                 **{f"shift_{i+1}": v for i, v in enumerate(metrics["shift"])},
+                **{f"nans_fraction_{i+1}": v for i, v in enumerate(metrics["nans_fraction"])},
             }
             results.append(row)
 
