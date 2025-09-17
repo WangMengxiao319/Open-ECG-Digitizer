@@ -2,6 +2,30 @@
 
 <!-- version list -->
 
+## v1.7.0 (2025-09-17)
+
+### Build System
+
+- Unpin requirements
+  ([`4ab7bcf`](https://github.com/Ahus-AIM/Electrocardiogram-Digitization/commit/4ab7bcf7e2a520371c874d180049cbc28c1ffa40))
+
+### Code Style
+
+- Change type annotations to make mypy happy
+  ([`415038b`](https://github.com/Ahus-AIM/Electrocardiogram-Digitization/commit/415038b1a4a28a91f6282addbac09f6ac6673f75))
+
+### Features
+
+- Add config file for gm2024 test set
+  ([`8f610ca`](https://github.com/Ahus-AIM/Electrocardiogram-Digitization/commit/8f610ca6a6b2dc7950d68deeb07a58711bdf5107))
+
+- Include image aspect for line count estimation
+  ([`7cc0a9c`](https://github.com/Ahus-AIM/Electrocardiogram-Digitization/commit/7cc0a9caa6017c5a0be740c17326f8f78be7f300))
+
+- Report nan count
+  ([`9923d53`](https://github.com/Ahus-AIM/Electrocardiogram-Digitization/commit/9923d53f89846b4bd6a8ccce8814d63c93746684))
+
+
 ## v1.6.0 (2025-07-11)
 
 ### Bug Fixes
