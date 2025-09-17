@@ -1,4 +1,5 @@
 import os
+from typing import Any
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -12,17 +13,19 @@ def ensure_directories(highlight_folder: str, save_folder: str) -> None:
     os.makedirs(save_folder, exist_ok=True)
 
 
-def load_image_as_array(path: str) -> np.ndarray:
+def load_image_as_array(path: str) -> np.ndarray[Any, Any]:
     """Load image and return as NumPy array."""
     return np.array(Image.open(path), dtype=np.int64)
 
 
-def save_image_from_array(array: np.ndarray, path: str) -> None:
+def save_image_from_array(array: np.ndarray[Any, Any], path: str) -> None:
     """Save NumPy array as image."""
     Image.fromarray(array.astype(np.uint8)).save(path)
 
 
-def compute_redaction_mask(image_array: np.ndarray, redaction_color: np.ndarray, threshold: float) -> np.ndarray:
+def compute_redaction_mask(
+    image_array: np.ndarray[Any, Any], redaction_color: np.ndarray[Any, Any], threshold: float
+) -> np.ndarray[Any, Any]:
     """
     Compute a boolean mask for pixels that match the redaction color within a norm threshold.
     """
@@ -31,7 +34,7 @@ def compute_redaction_mask(image_array: np.ndarray, redaction_color: np.ndarray,
     return norm < threshold  # type: ignore
 
 
-def visualize_histogram(norm_values: np.ndarray) -> None:
+def visualize_histogram(norm_values: np.ndarray[Any, Any]) -> None:
     """Optional: display a histogram of pixel value distances."""
     plt.figure()
     plt.hist(norm_values.flatten(), bins=256, color="green", alpha=0.7)
@@ -47,9 +50,9 @@ def process_images(
     redacted_folder: str,
     highlight_folder: str,
     save_folder: str,
-    redaction_color: np.ndarray,
+    redaction_color: np.ndarray[Any, Any],
     redaction_threshold: float,
-    output_color: np.ndarray,
+    output_color: np.ndarray[Any, Any],
     debug: bool = False,
 ) -> None:
     """Main processing loop for redacting images."""

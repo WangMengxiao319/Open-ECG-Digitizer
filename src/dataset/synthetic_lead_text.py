@@ -6,8 +6,8 @@ from typing import Any, Optional
 import cv2
 import numpy as np
 import torch
+from numpy import ndarray
 from numpy.fft import fft2, fftshift, ifft2
-from numpy.typing import NDArray
 from PIL import Image, ImageDraw, ImageFont
 from scipy.ndimage import gaussian_filter
 from torch import Tensor
@@ -15,7 +15,7 @@ from torch.utils.data import Dataset
 from torchvision.transforms import ToTensor
 
 
-def pink_noise(shape: tuple[int, int]) -> NDArray[np.float32]:
+def pink_noise(shape: tuple[int, int]) -> ndarray[Any, Any]:
     """
     Generates pink noise using the 1/f noise method.
     Pink noise has spatial correlation, which is useful for simulating natural textures.
@@ -34,7 +34,7 @@ def pink_noise(shape: tuple[int, int]) -> NDArray[np.float32]:
     return np.asarray(pink, dtype=np.float32)
 
 
-def random_lines(img: NDArray[np.float32], n_lines: int, image_size: int) -> NDArray[np.float32]:
+def random_lines(img: ndarray[Any, Any], n_lines: int, image_size: int) -> ndarray[Any, Any]:
     for _ in range(n_lines):
         x1, y1 = random.randint(0, image_size), random.randint(0, image_size)
         x2, y2 = random.randint(0, image_size), random.randint(0, image_size)
@@ -44,7 +44,7 @@ def random_lines(img: NDArray[np.float32], n_lines: int, image_size: int) -> NDA
     return img
 
 
-def intensity_gradient(img: NDArray[np.float32], image_size: int) -> NDArray[np.float32]:
+def intensity_gradient(img: ndarray[Any, Any], image_size: int) -> ndarray[Any, Any]:
     grad = np.tile(np.linspace(0, 1, image_size), (image_size, 1))
     direction = random.choice(["horizontal", "vertical"])
     if direction == "vertical":
@@ -52,7 +52,7 @@ def intensity_gradient(img: NDArray[np.float32], image_size: int) -> NDArray[np.
     return img * grad.astype(np.float32)
 
 
-def bright_splatter(img: NDArray[np.float32], image_size: int) -> NDArray[np.float32]:
+def bright_splatter(img: ndarray[Any, Any], image_size: int) -> ndarray[Any, Any]:
     n_splats = random.randint(1, 5)
     for _ in range(n_splats):
         x = random.randint(0, image_size - 1)
@@ -83,7 +83,7 @@ class SyntheticLeadTextDataset(Dataset[tuple[Tensor, Tensor]]):
                     font_files.append(os.path.join(root, file))
         return font_files
 
-    def _smudge_text(self, img: NDArray[np.float32]) -> NDArray[np.float32]:
+    def _smudge_text(self, img: ndarray[Any, Any]) -> ndarray[Any, Any]:
         if random.random() < 0.7:
             sigma = random.uniform(0.0, 1.0)
             img = gaussian_filter(img, sigma=sigma)
@@ -95,7 +95,7 @@ class SyntheticLeadTextDataset(Dataset[tuple[Tensor, Tensor]]):
 
     def _generate_image_with_text(
         self, text: str, font_path: Optional[str] = None
-    ) -> tuple[NDArray[np.float32], NDArray[np.float32]]:
+    ) -> tuple[ndarray[Any, Any], ndarray[Any, Any]]:
         font_size = random.randint(self.image_size // 30, self.image_size // 8)
         try:
             font = ImageFont.truetype(font_path, font_size) if font_path else ImageFont.load_default()
@@ -134,7 +134,7 @@ class SyntheticLeadTextDataset(Dataset[tuple[Tensor, Tensor]]):
 
         return img_np, label_np
 
-    def _apply_transforms(self, img: NDArray[np.float32]) -> NDArray[np.float32]:
+    def _apply_transforms(self, img: ndarray[Any, Any]) -> ndarray[Any, Any]:
         if random.random() < 0.4:
             img = random_lines(img, n_lines=random.randint(1, 3), image_size=self.image_size)
 
@@ -178,7 +178,7 @@ class SyntheticLeadTextDataset(Dataset[tuple[Tensor, Tensor]]):
             img = np.maximum(img, rand_img)
 
         img = self._apply_transforms(img)
-        img = np.clip(img, 0, 1)
+        img = np.clip(img, 0.0, 1.0)  # type: ignore
 
         img_tensor = self.transform(img)
         label_tensor = torch.zeros(13, self.image_size, self.image_size, dtype=torch.float32)
