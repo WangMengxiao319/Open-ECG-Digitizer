@@ -1,3 +1,4 @@
+from copy import deepcopy
 from typing import Any, Optional, Union
 
 import matplotlib.pyplot as plt
@@ -18,6 +19,7 @@ class LeadIdentifier:
         device: torch.device,
         possibly_flipped: bool = True,
         target_num_samples: int = 5000,
+        required_valid_samples: int = 3,
         debug: bool = False,
     ) -> None:
         """
@@ -27,6 +29,7 @@ class LeadIdentifier:
             device: device where inference will run.
             possibly_flipped: whether to check for flipped layouts (caused by upside-down images)
             target_num_samples: number of samples (seconds*sample rate) that the output should contain.
+            required_valid_samples: minimum number of non-NaN samples in a column to consider it valid. Decides where the signal is cropped.
             debug: whether to draw scatter/plots.
         """
         self.layouts = layouts
@@ -34,6 +37,7 @@ class LeadIdentifier:
         self.device = device
         self.possibly_flipped = possibly_flipped
         self.target_num_samples = target_num_samples
+        self.required_valid_samples = required_valid_samples
         self.debug = debug
 
     def _merge_nonoverlapping_lines(self, lines: torch.Tensor) -> torch.Tensor:
@@ -181,6 +185,22 @@ class LeadIdentifier:
     ) -> Union[float, NDArray[Any], torch.Tensor]:
         return 1 - factor + factor * lead
 
+    def _replace_duplicate_leads_layouts(self, layout_def: dict[str, Any]) -> dict[str, Any]:
+        """
+        For each row in layout, replace all but the first duplicate with X
+        """
+        output_layout_def = deepcopy(layout_def)
+        for row in output_layout_def["leads"]:
+            seen = set()
+            if not isinstance(row, list):
+                continue
+            for i, lead in enumerate(row):
+                if lead in seen:
+                    row[i] = "X"
+                else:
+                    seen.add(lead)
+        return output_layout_def
+
     def _generate_grid_positions(self, layout_def: dict[str, Any]) -> dict[str, NDArray[np.float64]]:
         """Generates normalized grid positions for each lead.
 
@@ -190,9 +210,10 @@ class LeadIdentifier:
         Returns:
             Mapping of lead name to grid position array.
         """
-        rows: int = layout_def["layout"]["rows"]
-        cols: int = layout_def["layout"]["cols"]
-        leads: Any = layout_def["leads"]
+        clean_layout_def = self._replace_duplicate_leads_layouts(layout_def)
+        rows: int = clean_layout_def["layout"]["rows"]
+        cols: int = clean_layout_def["layout"]["cols"]
+        leads: Any = clean_layout_def["leads"]
 
         def norm_y(i: int) -> float:
             return i / (rows - 1) if rows > 1 else 0.5
@@ -206,16 +227,28 @@ class LeadIdentifier:
             for y_idx, row in enumerate(leads):
                 for x_idx, lead in enumerate(row):
                     lead_str = lead.strip("-")
-                    pos[lead_str] = np.array([norm_x(x_idx), norm_y(y_idx)], dtype=np.float64)
+                    if len(pos.get(lead_str, np.array([]))) == 0:
+                        pos[lead_str] = np.array([norm_x(x_idx), norm_y(y_idx)], dtype=np.float64)
+                    else:
+                        pos[lead_str] = (pos[lead_str] + np.array([norm_x(x_idx), norm_y(y_idx)], dtype=np.float64)) / 2
         elif len(leads) == rows * cols:
             for idx, lead in enumerate(leads):
                 y_idx, x_idx = divmod(idx, cols)
                 lead_str = lead.strip("-")
-                pos[lead_str] = np.array([norm_x(x_idx), norm_y(y_idx)], dtype=np.float64)
+                if len(pos.get(lead_str, np.array([]))) == 0:
+                    pos[lead_str] = np.array([norm_x(x_idx), norm_y(y_idx)], dtype=np.float64)
+                else:
+                    pos[lead_str] = (pos[lead_str] + np.array([norm_x(x_idx), norm_y(y_idx)], dtype=np.float64)) / 2
         else:
             for y_idx, lead in enumerate(leads):
                 lead_str = lead.strip("-")
-                pos[lead_str] = np.array([0.5, norm_y(y_idx)], dtype=np.float64)
+                if len(pos.get(lead_str, np.array([]))) == 0:
+                    pos[lead_str] = np.array([0.5, norm_y(y_idx)], dtype=np.float64)
+                else:
+                    pos[lead_str] = (pos[lead_str] + np.array([0.5, norm_y(y_idx)], dtype=np.float64)) / 2
+        # drop the X key if it exists (placeholder for duplicate leads)
+        if "X" in pos:
+            del pos["X"]
         return pos
 
     def _extract_lead_points(
@@ -280,8 +313,9 @@ class LeadIdentifier:
         for layout_name, desc in layouts.items():
             total_rows: int = desc["total_rows"]
             rows_difference: int = abs(total_rows - rows_in_layout)
-
             pos_map: dict[str, NDArray[np.float64]] = self._generate_grid_positions(desc)
+            if "I" in pos_map:
+                del pos_map["I"]
             grid_leads: list[str] = list(pos_map.keys())
             grid_pts: NDArray[np.float64] = np.stack([pos_map[lead] for lead in grid_leads])
 
@@ -335,8 +369,6 @@ class LeadIdentifier:
                 if avg_res < best["cost"]:
                     best = {"layout": layout_name, "flip": flip, "cost": avg_res, "leads": grid_leads}
                 if self.debug:
-                    plt.scatter(grid_pts[:, 0], grid_pts[:, 1], c="blue", label="Layout", s=60)
-                    plt.scatter(P_scaled[:, 0], P_scaled[:, 1], c="red", label="Detected", s=60)
                     for ii, jj in idxs:
                         plt.plot(
                             [P_scaled[ii, 0], grid_pts[jj, 0]],
@@ -344,12 +376,21 @@ class LeadIdentifier:
                             c="gray",
                             alpha=0.5,
                         )
-                        plt.text(P_scaled[ii, 0], P_scaled[ii, 1], names[ii], ha="right", va="bottom", fontsize=9)
-                        plt.text(grid_pts[jj, 0], grid_pts[jj, 1], grid_leads[jj], ha="left", va="top", fontsize=9)
+                    plt.scatter(grid_pts[:, 0], grid_pts[:, 1], c="blue", label="Layout", s=250)
+                    for j, lead in enumerate(grid_leads):
+                        plt.text(
+                            grid_pts[j, 0], grid_pts[j, 1], lead, ha="center", va="center", fontsize=8, color="white"
+                        )
+                    plt.scatter(P_scaled[:, 0], P_scaled[:, 1], c="red", label="Detected", s=250)
+                    for i, name in enumerate(names):
+                        plt.text(
+                            P_scaled[i, 0], P_scaled[i, 1], name, ha="center", va="center", fontsize=8, color="white"
+                        )
                     plt.gca().invert_yaxis()
                     plt.title(f"{layout_name} (flip={flip}) - cost={avg_res:.4f}")
                     plt.legend()
-                    plt.show()
+                    plt.savefig(f"sandbox/match_debug_{layout_name}_{flip}.png", dpi=200)
+                    plt.close()
         return best
 
     def _interpolate_lines(self, lines: torch.Tensor, target_num_samples: int) -> torch.Tensor:
@@ -375,8 +416,8 @@ class LeadIdentifier:
         lines = lines * (mv_per_mm / avg_pixel_per_mm) * 1000
 
         non_nan_samples_per_column = torch.sum(~torch.isnan(lines), dim=0).numpy()
-        first_valid_index: int = int(np.argmax(non_nan_samples_per_column >= 3))
-        last_valid_index: int = int(np.argmax(non_nan_samples_per_column[::-1] >= 3))
+        first_valid_index: int = int(np.argmax(non_nan_samples_per_column >= self.required_valid_samples))
+        last_valid_index: int = int(np.argmax(non_nan_samples_per_column[::-1] >= self.required_valid_samples))
         last_valid_index = lines.shape[1] - last_valid_index - 1
         if first_valid_index <= last_valid_index:
             lines = lines[:, first_valid_index : last_valid_index + 1]
@@ -411,7 +452,7 @@ class LeadIdentifier:
         lines: torch.Tensor,
         feature_map: torch.Tensor,
         avg_pixel_per_mm: float,
-        threshold: float = 0.9,
+        threshold: float = 0.8,
         mv_per_mm: float = 0.1,
         layout_should_include_substring: Optional[str] = None,
     ) -> dict[str, Any]:

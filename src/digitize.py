@@ -107,9 +107,27 @@ def save_png_plot(got_values: dict[str, Any], canonical: torch.Tensor | None, ou
         lines -= np.linspace(0, 24_000, num=lines.shape[0])[:, None]  # 2 uV offset per lead
         axs[1, 1].plot(lines.T, linewidth=0.5)
     plt.tight_layout()
-    plt.suptitle(got_values.get("layout_name", ""), fontsize=16)
+    plt.suptitle(
+        got_values.get("layout_name", "") + " Layout cost: " + f'{got_values["signal"]["layout_matching_cost"]:.2f}',
+        fontsize=16,
+    )
     plt.savefig(output_basepath + ".png", dpi=200)
     plt.close()
+
+
+def save_matching_cost(got_values: dict[str, Any], output_basepath: str) -> None:
+    # if no csv called digization_metadata.csv exists, create it with header "matching_cost, is_flipped, lead_layout"
+    metadata_file = os.path.join(os.path.dirname(output_basepath), "digitization_metadata.csv")
+    if not os.path.exists(metadata_file):
+        with open(metadata_file, "w") as f:
+            f.write("file_path,matching_cost,is_flipped,lead_layout\n")
+    # then append the values
+    with open(metadata_file, "a") as f:
+        file_name = os.path.basename(output_basepath)
+        matching_cost = got_values.get("signal", {}).get("layout_matching_cost", float("nan"))
+        is_flipped = got_values.get("is_flipped", False)
+        lead_layout = got_values.get("layout_name", "")
+        f.write(f"{file_name},{matching_cost},{is_flipped},{lead_layout}\n")
 
 
 def save_outputs(got_values: dict[str, Any], output_basepath: str, save_mode: str = "all") -> None:
@@ -118,6 +136,7 @@ def save_outputs(got_values: dict[str, Any], output_basepath: str, save_mode: st
         save_timeseries_csv(canonical, output_basepath)
     if save_mode in ["all", "png_only"]:
         save_png_plot(got_values, canonical, output_basepath)
+    save_matching_cost(got_values, output_basepath)
 
 
 def process_one_file(file_path: str, config: CN, inference_wrapper: Any, save_mode: str) -> None:

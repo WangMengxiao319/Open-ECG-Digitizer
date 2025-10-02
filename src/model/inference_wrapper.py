@@ -130,9 +130,13 @@ class InferenceWrapper(Module):
             layout_should_include_substring=layout_should_include_substring,
         )
         try:
-            layout_str = layout["layout"] + " flipped: " + str(layout["flip"])
+            layout_str = layout["layout"]
+            layout_is_flipped = str(layout["flip"])
+            layout_cost = layout.get("cost", 1.0)
         except KeyError:
             layout_str = "Unknown layout"
+            layout_is_flipped = "False"
+            layout_cost = 1.0
 
         return {
             "layout_name": layout_str,
@@ -147,6 +151,8 @@ class InferenceWrapper(Module):
                 "raw_lines": signals.cpu(),
                 "canonical_lines": layout.get("canonical_lines", None),
                 "lines": layout.get("lines", None),
+                "layout_matching_cost": layout_cost,
+                "layout_is_flipped": layout_is_flipped,
             },
             "pixel_spacing_mm": {
                 "x": mm_per_pixel_x,

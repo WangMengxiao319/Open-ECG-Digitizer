@@ -49,6 +49,7 @@ MODEL:
           device: 'cuda:0'
           possibly_flipped: false
           target_num_samples: 10000 # this is (time * desired sample rate)
+          required_valid_samples: 2 # This should be roughly the number of expected rows divided by two
           
     device: 'cuda:0'
     resample_size: 3000 # this can be changed down to 2000 depending on GPU memory
