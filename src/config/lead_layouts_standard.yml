@@ -1,0 +1,27 @@
+standard_6x2_with_r1:
+  description: "6×2 standard layout with 1 wildcard rhythm lead"
+  layout:
+    rows: 6
+    cols: 2
+  leads:
+    - ["I", "V1"]
+    - ["II", "V2"]
+    - ["III", "V3"]
+    - ["aVR", "V4"]
+    - ["aVL", "V5"]
+    - ["aVF", "V6"]
+  rhythm_leads: ["Any"]
+  total_rows: 7
+
+standard_3x4_with_r1:
+  description: "3×4 standard layout with 1 wildcard rhythm lead"
+  layout:
+    rows: 3
+    cols: 4
+  leads:
+    - ["I", "aVR", "V1", "V4"]
+    - ["II", "aVL", "V2", "V5"]
+    - ["III", "aVF", "V3", "V6"]
+  rhythm_leads: ["Any"]
+  total_rows: 4
+

@@ -471,6 +471,7 @@ class LeadIdentifier:
         self.unet.eval()
         with torch.no_grad():
             logits: torch.Tensor = self.unet(feature_map.to(self.device))  # [1,13,H,W]
+            print('unet2 output,',logits.shape)
             probs: torch.Tensor = torch.softmax(logits, dim=1)[:, :12]  # [1,12,H,W]
             probs[:, 0] = 0  # Ignore the position of the "I" lead as it is particularly prone to false positives.
         probs[probs < threshold] = 0
@@ -480,7 +481,7 @@ class LeadIdentifier:
             canonical_lines: Optional[torch.Tensor] = None
         else:
             match = self._match_layout(detected, rows_in_layout, layouts, self.possibly_flipped)
-
+        print('match result,',match)
         if "layout" not in match:
             print(f"No matching layout found, defaulting to first layout: {list(layouts.keys())[0]}")
             match["layout"] = list(layouts.keys())[0]

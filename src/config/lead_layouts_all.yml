@@ -123,7 +123,7 @@ standard_6x2_with_r1:
   leads:
     - ["I", "V1"]
     - ["II", "V2"]
-    - ["III", "V2"]
+    - ["III", "V3"]  #修复这个bug
     - ["aVR", "V4"]
     - ["aVL", "V5"]
     - ["aVF", "V6"]
